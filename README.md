@@ -26,16 +26,156 @@ A modern React application for managing podcast subscriptions and viewing episod
 
 ## Tech Stack
 
+### Frontend
 - **React 18** with TypeScript
 - **Vite** for fast development and building
 - **CSS3** with modern responsive design
-- **Fetch API** for HTTP requests
 
-## Project Structure
+### Backend
+- **FastAPI** - Modern Python web framework
+- **Motor** - Async MongoDB driver
+- **Uvicorn** - ASGI server
+
+### Database & Storage
+- **MongoDB 7** - Document database
+- **LocalStack** - AWS service emulation (S3, Lambda, Step Functions)
+
+### Development
+- **Docker & Docker Compose** - Containerized development environment
+
+## 🚀 Quick Start with Docker
+
+### Prerequisites
+
+- [Docker](https://docs.docker.com/get-docker/) (version 20.10 or higher)
+- [Docker Compose](https://docs.docker.com/compose/install/) (version 2.0 or higher)
+- Make (optional, but recommended)
+
+### Installation
+
+1. **Clone the repository**:
+   ```bash
+   git clone <repository-url>
+   cd podcasts
+   ```
+
+2. **Set up environment variables**:
+   ```bash
+   make setup
+   # or manually:
+   cp .env.example .env
+   ```
+
+3. **Edit `.env` and add your OpenAI API key**:
+   ```bash
+   # Edit the OPENAI_API_KEY in .env
+   OPENAI_API_KEY=your-actual-api-key-here
+   ```
+
+4. **Start all services**:
+   ```bash
+   make up
+   # or manually:
+   docker-compose up -d
+   ```
+
+5. **Initialize the database** (first time only):
+   ```bash
+   make init-db
+   # or manually:
+   docker-compose exec backend python scripts/setup_mongodb.py
+   ```
+
+6. **Access the application**:
+   - Frontend: http://localhost:3000
+   - Backend API: http://localhost:8000
+   - API Documentation: http://localhost:8000/docs
+   - MongoDB: mongodb://localhost:27017
+
+### Makefile Commands
+
+The project includes a comprehensive Makefile for easy management:
+
+```bash
+make help              # Show all available commands
+make setup             # Initial setup - copy .env.example to .env
+make up                # Start all services
+make down              # Stop all services
+make restart           # Restart all services
+make logs              # View logs from all services
+make logs-backend      # View backend logs only
+make logs-frontend     # View frontend logs only
+make ps                # Show status of all services
+make health            # Check health of all services
+make init-db           # Initialize MongoDB with schemas and sample data
+make clean             # Stop services and remove volumes (deletes data)
+make rebuild           # Rebuild all containers from scratch
+make shell-backend     # Open shell in backend container
+make shell-frontend    # Open shell in frontend container
+make shell-mongo       # Open MongoDB shell
+make backup-db         # Backup MongoDB database
+make s3-list           # List S3 buckets in LocalStack
+make install           # Full installation (setup + up)
+make dev               # Start services and follow logs
+```
+
+## 🐳 Docker Architecture
+
+### Services
+
+#### 1. MongoDB
+- **Image**: mongo:7
+- **Port**: 27017
+- **Purpose**: Primary database for podcasts and episodes
+- **Volume**: `mongodb-data` for persistence
+- **Initialization**: Automatic schema and index creation
+
+#### 2. LocalStack
+- **Image**: localstack/localstack
+- **Port**: 4566
+- **Services**: S3, Lambda, Step Functions
+- **Purpose**: AWS service emulation for local development
+- **Volume**: `localstack-data` for persistence
+- **Auto-init**: Creates S3 buckets on startup
+
+#### 3. Backend (FastAPI)
+- **Build**: `./server/Dockerfile`
+- **Port**: 8000
+- **Hot Reload**: Enabled via volume mounts
+- **Health Check**: `/health` endpoint
+- **Dependencies**: MongoDB, LocalStack
+
+#### 4. Frontend (React + Vite)
+- **Build**: `./Dockerfile`
+- **Port**: 3000
+- **Hot Reload**: Enabled via volume mounts
+- **Health Check**: HTTP on port 3000
+- **Dependencies**: Backend API
+
+### Networking
+
+All services run on a shared Docker network (`podcast-network`), allowing them to communicate using service names:
+- Backend connects to MongoDB at `mongodb://mongodb:27017`
+- Backend connects to LocalStack at `http://localstack:4566`
+- Frontend connects to Backend at `http://backend:8000`
+
+### Data Persistence
+
+Two named volumes ensure data persists across container restarts:
+- `podcast-mongodb-data`: MongoDB database files
+- `podcast-localstack-data`: LocalStack state and S3 objects
+
+## 📁 Project Structure
 
 ```
 podcasts/
-├── src/
+├── docker-compose.yml              # Docker Compose configuration
+├── Dockerfile                      # Frontend container definition
+├── Makefile                        # Development commands
+├── .env.example                    # Environment variable template
+├── .dockerignore                   # Docker build exclusions
+│
+├── src/                            # Frontend source code
 │   ├── components/
 │   │   ├── PodcastSubscription.tsx      # Podcast subscription component
 │   │   ├── PodcastSubscription.css      # Subscription component styles
@@ -53,43 +193,166 @@ podcasts/
 │   ├── App.css                          # App and navigation styles
 │   ├── main.tsx                         # Entry point
 │   └── index.css                        # Global styles
-├── index.html                           # HTML template
-├── package.json                         # Dependencies
-├── tsconfig.json                        # TypeScript config
-└── vite.config.ts                       # Vite config
+│
+├── server/                         # Backend source code
+│   ├── Dockerfile                       # Backend container definition
+│   ├── .dockerignore                    # Backend build exclusions
+│   ├── requirements.txt                 # Python dependencies
+│   ├── app/
+│   │   ├── main.py                      # FastAPI application
+│   │   ├── config.py                    # Configuration management
+│   │   ├── database.py                  # MongoDB connection
+│   │   ├── models/                      # Pydantic models
+│   │   └── routes/                      # API endpoints
+│   └── scripts/
+│       └── setup_mongodb.py             # Database initialization
+│
+├── localstack-init/                # LocalStack initialization
+│   └── ready.d/
+│       └── init-aws.sh                  # S3 bucket creation script
+│
+├── *-lambda/                       # Lambda functions
+│   ├── poll-lambda/                     # RSS feed polling
+│   ├── chunking-lambda/                 # Audio chunking
+│   ├── whisper-lambda/                  # Transcription
+│   └── merge-transcript-lambda/         # Transcript merging
+│
+├── index.html                      # HTML template
+├── package.json                    # Frontend dependencies
+├── tsconfig.json                   # TypeScript config
+└── vite.config.ts                  # Vite config
 ```
 
-## Installation
+## 🛠️ Development
 
-1. **Clone the repository**:
-   ```bash
-   git clone <repository-url>
-   cd podcasts
-   ```
+### Running Without Docker
 
-2. **Install dependencies**:
-   ```bash
-   npm install
-   ```
+If you prefer to run services locally without Docker:
 
-3. **Configure environment variables**:
-   ```bash
-   cp .env.example .env
-   ```
+#### Frontend
+```bash
+npm install
+npm run dev
+```
 
-   Update `.env` with your API base URL:
-   ```
-   VITE_API_BASE_URL=http://localhost:3000/api
-   ```
+#### Backend
+```bash
+cd server
+pip install -r requirements.txt
+python -m app.main
+```
 
-4. **Start the development server**:
-   ```bash
-   npm run dev
-   ```
+#### MongoDB
+```bash
+# Install MongoDB locally and start it
+mongod --dbpath /path/to/data
+```
 
-   The application will be available at `http://localhost:5173`
+### Environment Variables
 
-## API Endpoints
+See `.env.example` for all available configuration options:
+
+- `VITE_API_URL`: Frontend API endpoint
+- `MONGODB_URL`: MongoDB connection string
+- `AWS_ENDPOINT_URL`: LocalStack endpoint
+- `OPENAI_API_KEY`: OpenAI API key for transcription
+- `S3_BUCKET_NAME`: S3 bucket for audio files
+- `LOG_LEVEL`: Logging verbosity
+
+### Hot Reload
+
+Both frontend and backend support hot reload in development:
+- **Frontend**: Vite watches for file changes in `src/`
+- **Backend**: Uvicorn watches for file changes in `app/`
+
+Changes to source files are automatically reflected without restarting containers.
+
+### Database Management
+
+#### View MongoDB Data
+```bash
+make shell-mongo
+# or
+docker-compose exec mongodb mongosh podcast_db
+```
+
+#### Reset Database
+```bash
+make clean
+make up
+make init-db
+```
+
+#### Backup Database
+```bash
+make backup-db
+```
+
+#### Restore Database
+```bash
+make restore-db FILE=backups/mongodb-backup-XXXXXXXX.archive
+```
+
+### Working with LocalStack
+
+#### List S3 Buckets
+```bash
+make s3-list
+```
+
+#### List Files in Buckets
+```bash
+make s3-list-audio
+make s3-list-transcripts
+```
+
+#### Access LocalStack Directly
+```bash
+docker-compose exec localstack awslocal s3 ls
+docker-compose exec localstack awslocal lambda list-functions
+```
+
+### Debugging
+
+#### View Logs
+```bash
+# All services
+make logs
+
+# Specific service
+make logs-backend
+make logs-frontend
+make logs-mongodb
+make logs-localstack
+```
+
+#### Check Service Health
+```bash
+make health
+```
+
+#### Access Container Shell
+```bash
+make shell-backend
+make shell-frontend
+```
+
+## 🧪 Testing
+
+### Backend Tests
+```bash
+make test-backend
+# or
+docker-compose exec backend pytest
+```
+
+### Linting
+```bash
+make lint-backend
+make lint-frontend
+```
+
+## 📋 API Endpoints
 
 The application expects the following API endpoints:
 
@@ -180,131 +443,72 @@ Response:
 }
 ```
 
-## Component Usage
+## 🔧 Troubleshooting
 
-The application includes two main components that can be used independently:
+### Services Won't Start
+```bash
+# Check Docker is running
+docker --version
+docker-compose --version
 
-### Podcast Subscription Component
-```tsx
-import { PodcastSubscription } from './components/PodcastSubscription';
+# Check service status
+make ps
 
-function App() {
-  return <PodcastSubscription />;
-}
+# View logs for errors
+make logs
 ```
 
-### Episode Transcripts Component
-```tsx
-import { EpisodeTranscripts } from './components/EpisodeTranscripts';
+### Port Conflicts
+If ports 3000, 8000, 27017, or 4566 are already in use:
+1. Stop conflicting services
+2. Or modify ports in `docker-compose.yml`
 
-function App() {
-  return <EpisodeTranscripts />;
-}
+### Database Connection Issues
+```bash
+# Check MongoDB is running
+make shell-mongo
+
+# Reinitialize database
+make init-db
 ```
 
-### Full Application with Navigation
-```tsx
-import { useState } from 'react';
-import { PodcastSubscription } from './components/PodcastSubscription';
-import { EpisodeTranscripts } from './components/EpisodeTranscripts';
+### LocalStack Issues
+```bash
+# View LocalStack logs
+make logs-localstack
 
-function App() {
-  const [activeTab, setActiveTab] = useState('subscriptions');
-
-  return (
-    <div>
-      <nav>
-        <button onClick={() => setActiveTab('subscriptions')}>Subscriptions</button>
-        <button onClick={() => setActiveTab('transcripts')}>Transcripts</button>
-      </nav>
-      {activeTab === 'subscriptions' && <PodcastSubscription />}
-      {activeTab === 'transcripts' && <EpisodeTranscripts />}
-    </div>
-  );
-}
+# Check LocalStack health
+curl http://localhost:4566/_localstack/health
 ```
 
-## Features in Detail
+### Clean Slate
+```bash
+# Remove all containers and volumes
+make clean
 
-### Podcast Subscriptions
+# Rebuild everything
+make rebuild
 
-#### Form Validation
-- Validates that the RSS URL is not empty
-- Ensures the URL uses http:// or https:// protocol
-- Provides real-time feedback to users
-- Clears validation errors as user types
+# Start fresh
+make up
+make init-db
+```
 
-#### Subscription Management
-- Grid-based card layout for podcasts
-- Podcast thumbnails with fallback placeholders
-- Confirmation dialog before unsubscribing
-- Automatic list refresh after actions
+## 📝 Scripts
 
-### Episode Transcripts
-
-#### Filtering System
-- Filter by transcript status: All, Completed, Processing
-- Active filter highlighted in UI
-- Episode count displayed for current filter
-- Maintains filter state during navigation
-
-#### Pagination
-- 20 episodes per page
-- Smart page number display with ellipsis
-- Previous/Next navigation buttons
-- Automatic scroll to top on page change
-- Results summary showing current range
-
-#### Transcript Viewer
-- Modal overlay for focused reading
-- Full-screen on mobile devices
-- Copy to clipboard with visual confirmation
-- Keyboard support (ESC to close)
-- Loading states while fetching transcript
-- Error handling with retry functionality
-
-#### Skeleton Loaders
-- Animated skeleton cards during initial load
-- Shimmer effect for visual feedback
-- Preserves layout to prevent content jump
-
-### Common Features
-
-#### Loading States
-- Spinners during API calls
-- Disabled inputs while processing
-- Skeleton loaders for content
-- Processing indicators for background tasks
-
-#### Error Handling
-- Catches network errors
-- Displays user-friendly error messages
-- Retry buttons for failed operations
-- Handles API errors gracefully
-
-#### Responsive Design
-- Grid layout adapts to screen size
-- Mobile-friendly form inputs
-- Touch-optimized buttons
-- Sticky navigation header
-- Breakpoints at 768px and 480px
-- Tab labels hidden on very small screens
-
-## Scripts
-
-- `npm run dev` - Start development server
-- `npm run build` - Build for production
+- `npm run dev` - Start frontend development server
+- `npm run build` - Build frontend for production
 - `npm run preview` - Preview production build
 - `npm run lint` - Run ESLint
 
-## Browser Support
+## 🌐 Browser Support
 
 - Chrome (latest)
 - Firefox (latest)
 - Safari (latest)
 - Edge (latest)
 
-## Future Enhancements
+## 🚀 Future Enhancements
 
 - **Search Functionality**: Search episodes by title or podcast name
 - **Audio Playback**: Play episodes directly in the browser
@@ -317,10 +521,10 @@ function App() {
 - **Bookmarking**: Save favorite episodes and transcript sections
 - **Sharing**: Share episodes and transcript highlights
 
-## License
+## 📄 License
 
 MIT
 
-## Contributing
+## 🤝 Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
