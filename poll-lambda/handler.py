@@ -15,6 +15,9 @@ from dateutil import parser as date_parser
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
+# Constants
+DEFAULT_S3_BUCKET = 'podcast-audio-bucket'
+
 # Initialize AWS clients
 sfn_client = boto3.client('stepfunctions', region_name=os.environ.get('AWS_REGION', 'us-east-1'))
 
@@ -219,7 +222,7 @@ def trigger_step_function(episode_id: str, audio_url: str) -> None:
     input_data = {
         'episode_id': episode_id,
         'audio_url': audio_url,
-        's3_bucket': 'podcast-audio-bucket'
+        's3_bucket': os.environ.get('S3_BUCKET', DEFAULT_S3_BUCKET)
     }
 
     response = sfn_client.start_execution(

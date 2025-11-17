@@ -13,6 +13,10 @@ from app.models import (
 )
 from app.services import s3_service
 
+# Constants
+DEFAULT_PAGE_LIMIT = 20
+MAX_PAGE_LIMIT = 100
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/episodes", tags=["episodes"])
@@ -22,7 +26,7 @@ router = APIRouter(prefix="/api/episodes", tags=["episodes"])
 async def get_episodes(
     status_filter: Optional[str] = Query(None, alias="status", description="Filter by transcript status (all/completed/processing/pending/failed)"),
     page: int = Query(1, ge=1, description="Page number"),
-    limit: int = Query(20, ge=1, le=100, description="Items per page"),
+    limit: int = Query(DEFAULT_PAGE_LIMIT, ge=1, le=MAX_PAGE_LIMIT, description="Items per page"),
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
     """
