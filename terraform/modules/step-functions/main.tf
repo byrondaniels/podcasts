@@ -50,18 +50,24 @@ resource "aws_sfn_state_machine" "podcast_processing" {
   role_arn = aws_iam_role.step_functions.arn
 
   definition = jsonencode({
-    Comment = "Podcast Processing Workflow: Chunk audio, transcribe chunks in parallel, and merge transcripts"
-    StartAt = "ChunkAudio"
+    Comment = "Podcast episode transcription workflow"
+    StartAt = "DownloadAndChunk"
     States = {
-      ChunkAudio = {
-        Type     = "Task"
-        Resource = var.audio_chunker_arn
-        Comment  = "Split audio file into 10-minute chunks"
+      # Step 1: Download and Chunk Audio
+      DownloadAndChunk = {
+        Type         = "Task"
+        Resource     = var.audio_chunker_arn
+        Comment      = "Download audio file and split into chunks"
+        TimeoutSeconds = 900  # 15 minutes
+        ResultPath   = "$.chunkingResult"
         Retry = [
           {
             ErrorEquals = [
               "States.TaskFailed",
-              "States.Timeout"
+              "States.Timeout",
+              "Lambda.ServiceException",
+              "Lambda.AWSLambdaException",
+              "Lambda.SdkClientException"
             ]
             IntervalSeconds = 2
             MaxAttempts     = 3
@@ -72,78 +78,95 @@ resource "aws_sfn_state_machine" "podcast_processing" {
           {
             ErrorEquals = ["States.ALL"]
             ResultPath  = "$.error"
-            Next        = "ChunkingFailed"
+            Next        = "HandleFailure"
           }
         ]
+        Next = "PrepareForMapping"
+      }
+
+      # Prepare data for Map state
+      PrepareForMapping = {
+        Type = "Pass"
+        Comment = "Prepare chunks array and preserve episode_id"
+        Parameters = {
+          "episode_id.$" = "$.episode_id"
+          "chunks.$" = "$.chunkingResult.chunks"
+          "s3_bucket.$" = "$.s3_bucket"
+        }
         Next = "TranscribeChunks"
       }
 
+      # Step 2: Transcribe Chunks in Parallel (Map State)
       TranscribeChunks = {
-        Type       = "Map"
-        ItemsPath  = "$.chunks"
+        Type           = "Map"
+        ItemsPath      = "$.chunks"
         MaxConcurrency = 10
+        ResultPath     = "$.transcripts"
         Iterator = {
           StartAt = "TranscribeChunk"
           States = {
             TranscribeChunk = {
-              Type     = "Task"
-              Resource = var.transcribe_chunk_arn
-              Comment  = "Transcribe a single audio chunk using Whisper API"
+              Type           = "Task"
+              Resource       = var.transcribe_chunk_arn
+              Comment        = "Transcribe individual audio chunk using Whisper API"
+              TimeoutSeconds = 300  # 5 minutes per chunk
               Retry = [
                 {
                   ErrorEquals = [
-                    "States.TaskFailed"
-                  ]
-                  IntervalSeconds = 5
-                  MaxAttempts     = 3
-                  BackoffRate     = 2.0
-                },
-                {
-                  ErrorEquals = [
-                    "States.Timeout"
+                    "States.TaskFailed",
+                    "States.Timeout",
+                    "Lambda.ServiceException",
+                    "Lambda.AWSLambdaException",
+                    "Lambda.SdkClientException"
                   ]
                   IntervalSeconds = 2
-                  MaxAttempts     = 2
-                  BackoffRate     = 1.5
+                  MaxAttempts     = 3
+                  BackoffRate     = 2.0
                 }
               ]
               Catch = [
                 {
                   ErrorEquals = ["States.ALL"]
                   ResultPath  = "$.error"
-                  Next        = "TranscriptionFailed"
+                  Next        = "ChunkTranscriptionFailed"
                 }
               ]
               End = true
             }
 
-            TranscriptionFailed = {
+            ChunkTranscriptionFailed = {
               Type  = "Fail"
-              Error = "TranscriptionError"
-              Cause = "Failed to transcribe audio chunk"
+              Error = "ChunkTranscriptionError"
+              Cause = "Failed to transcribe individual audio chunk after retries"
             }
           }
         }
-        ResultPath = "$.transcriptionResults"
         Catch = [
           {
             ErrorEquals = ["States.ALL"]
             ResultPath  = "$.error"
-            Next        = "TranscriptionMapFailed"
+            Next        = "HandleFailure"
           }
         ]
         Next = "MergeTranscripts"
       }
 
+      # Step 3: Merge Transcripts
       MergeTranscripts = {
-        Type     = "Task"
-        Resource = var.merge_transcripts_arn
-        Comment  = "Combine all transcript chunks into final transcript"
+        Type           = "Task"
+        Resource       = var.merge_transcripts_arn
+        Comment        = "Combine all transcript chunks into final transcript"
+        TimeoutSeconds = 300  # 5 minutes
+        InputPath      = "$"
+        ResultPath     = "$.mergeResult"
         Retry = [
           {
             ErrorEquals = [
               "States.TaskFailed",
-              "States.Timeout"
+              "States.Timeout",
+              "Lambda.ServiceException",
+              "Lambda.AWSLambdaException",
+              "Lambda.SdkClientException"
             ]
             IntervalSeconds = 2
             MaxAttempts     = 3
@@ -154,28 +177,43 @@ resource "aws_sfn_state_machine" "podcast_processing" {
           {
             ErrorEquals = ["States.ALL"]
             ResultPath  = "$.error"
-            Next        = "MergeFailed"
+            Next        = "HandleFailure"
           }
         ]
+        Next = "ProcessingComplete"
+      }
+
+      # Success State
+      ProcessingComplete = {
+        Type = "Pass"
+        Comment = "Podcast episode processing completed successfully"
+        Parameters = {
+          "episode_id.$" = "$.episode_id"
+          "status" = "completed"
+          "final_transcript_key.$" = "$.mergeResult.final_transcript_key"
+          "message" = "Transcription workflow completed successfully"
+        }
         End = true
       }
 
-      ChunkingFailed = {
-        Type  = "Fail"
-        Error = "ChunkingError"
-        Cause = "Failed to chunk audio file"
+      # Error Handling State
+      HandleFailure = {
+        Type = "Pass"
+        Comment = "Mark episode as failed and prepare error response"
+        Parameters = {
+          "episode_id.$" = "$.episode_id"
+          "status" = "failed"
+          "error_info.$" = "$.error"
+          "message" = "Transcription workflow failed"
+        }
+        Next = "WorkflowFailed"
       }
 
-      TranscriptionMapFailed = {
+      # Final Failure State
+      WorkflowFailed = {
         Type  = "Fail"
-        Error = "TranscriptionMapError"
-        Cause = "Failed during parallel transcription of chunks"
-      }
-
-      MergeFailed = {
-        Type  = "Fail"
-        Error = "MergeError"
-        Cause = "Failed to merge transcript chunks"
+        Error = "PodcastProcessingError"
+        Cause = "Podcast episode processing failed. Episode marked as failed in database."
       }
     }
   })

@@ -1,0 +1,154 @@
+{
+  "Comment": "Podcast episode transcription workflow",
+  "StartAt": "DownloadAndChunk",
+  "States": {
+    "DownloadAndChunk": {
+      "Type": "Task",
+      "Resource": "${audio_chunker_arn}",
+      "Comment": "Download audio file and split into chunks",
+      "TimeoutSeconds": 900,
+      "ResultPath": "$.chunkingResult",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.TaskFailed",
+            "States.Timeout",
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "HandleFailure"
+        }
+      ],
+      "Next": "PrepareForMapping"
+    },
+    "PrepareForMapping": {
+      "Type": "Pass",
+      "Comment": "Prepare chunks array and preserve episode_id",
+      "Parameters": {
+        "episode_id.$": "$.episode_id",
+        "chunks.$": "$.chunkingResult.chunks",
+        "s3_bucket.$": "$.s3_bucket"
+      },
+      "Next": "TranscribeChunks"
+    },
+    "TranscribeChunks": {
+      "Type": "Map",
+      "ItemsPath": "$.chunks",
+      "MaxConcurrency": 10,
+      "ResultPath": "$.transcripts",
+      "Iterator": {
+        "StartAt": "TranscribeChunk",
+        "States": {
+          "TranscribeChunk": {
+            "Type": "Task",
+            "Resource": "${transcribe_chunk_arn}",
+            "Comment": "Transcribe individual audio chunk using Whisper API",
+            "TimeoutSeconds": 300,
+            "Retry": [
+              {
+                "ErrorEquals": [
+                  "States.TaskFailed",
+                  "States.Timeout",
+                  "Lambda.ServiceException",
+                  "Lambda.AWSLambdaException",
+                  "Lambda.SdkClientException"
+                ],
+                "IntervalSeconds": 2,
+                "MaxAttempts": 3,
+                "BackoffRate": 2.0
+              }
+            ],
+            "Catch": [
+              {
+                "ErrorEquals": ["States.ALL"],
+                "ResultPath": "$.error",
+                "Next": "ChunkTranscriptionFailed"
+              }
+            ],
+            "End": true
+          },
+          "ChunkTranscriptionFailed": {
+            "Type": "Fail",
+            "Error": "ChunkTranscriptionError",
+            "Cause": "Failed to transcribe individual audio chunk after retries"
+          }
+        }
+      },
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "HandleFailure"
+        }
+      ],
+      "Next": "MergeTranscripts"
+    },
+    "MergeTranscripts": {
+      "Type": "Task",
+      "Resource": "${merge_transcripts_arn}",
+      "Comment": "Combine all transcript chunks into final transcript",
+      "TimeoutSeconds": 300,
+      "InputPath": "$",
+      "ResultPath": "$.mergeResult",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.TaskFailed",
+            "States.Timeout",
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "HandleFailure"
+        }
+      ],
+      "Next": "ProcessingComplete"
+    },
+    "ProcessingComplete": {
+      "Type": "Pass",
+      "Comment": "Podcast episode processing completed successfully",
+      "Parameters": {
+        "episode_id.$": "$.episode_id",
+        "status": "completed",
+        "final_transcript_key.$": "$.mergeResult.final_transcript_key",
+        "message": "Transcription workflow completed successfully"
+      },
+      "End": true
+    },
+    "HandleFailure": {
+      "Type": "Pass",
+      "Comment": "Mark episode as failed and prepare error response",
+      "Parameters": {
+        "episode_id.$": "$.episode_id",
+        "status": "failed",
+        "error_info.$": "$.error",
+        "message": "Transcription workflow failed"
+      },
+      "Next": "WorkflowFailed"
+    },
+    "WorkflowFailed": {
+      "Type": "Fail",
+      "Error": "PodcastProcessingError",
+      "Cause": "Podcast episode processing failed. Episode marked as failed in database."
+    }
+  }
+}
