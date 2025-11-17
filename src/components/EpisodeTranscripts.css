@@ -1,0 +1,532 @@
+/* Container and Layout */
+.episode-transcripts-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+}
+
+.episode-transcripts-header {
+  text-align: center;
+  margin-bottom: 2.5rem;
+}
+
+.episode-transcripts-header h1 {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: #1a1a1a;
+  margin: 0 0 0.5rem 0;
+}
+
+.episode-transcripts-header p {
+  font-size: 1.125rem;
+  color: #6b7280;
+  margin: 0;
+}
+
+/* Filters */
+.filters-container {
+  margin-bottom: 2rem;
+}
+
+.filters {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.filter-button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1.25rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: #4b5563;
+  background-color: white;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.filter-button:hover {
+  border-color: #3b82f6;
+  color: #3b82f6;
+  transform: translateY(-1px);
+}
+
+.filter-button.active {
+  background-color: #3b82f6;
+  border-color: #3b82f6;
+  color: white;
+}
+
+.filter-count {
+  font-size: 0.875rem;
+  opacity: 0.9;
+}
+
+/* Error State */
+.episodes-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem 2rem;
+  background-color: #fef2f2;
+  border-radius: 12px;
+  border: 1px solid #fecaca;
+  gap: 1rem;
+}
+
+.error-icon {
+  width: 3rem;
+  height: 3rem;
+  color: #dc2626;
+}
+
+.episodes-error p {
+  color: #991b1b;
+  font-size: 1rem;
+  margin: 0;
+}
+
+.retry-button {
+  padding: 0.625rem 1.25rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: white;
+  background-color: #dc2626;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.retry-button:hover {
+  background-color: #b91c1c;
+}
+
+/* Empty State */
+.episodes-empty-state {
+  text-align: center;
+  padding: 4rem 2rem;
+  background-color: #f9fafb;
+  border-radius: 12px;
+  border: 2px dashed #d1d5db;
+}
+
+.empty-state-icon {
+  width: 4rem;
+  height: 4rem;
+  color: #9ca3af;
+  margin: 0 auto 1rem;
+}
+
+.episodes-empty-state h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #374151;
+  margin: 0 0 0.5rem 0;
+}
+
+.episodes-empty-state p {
+  font-size: 1rem;
+  color: #6b7280;
+  margin: 0;
+}
+
+/* Episodes Grid */
+.episodes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+/* Episode Card */
+.episode-card {
+  background: white;
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.episode-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+.episode-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.episode-title {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: #1a1a1a;
+  margin: 0;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  flex: 1;
+}
+
+.podcast-name {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: #6b7280;
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Status Badge */
+.status-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: capitalize;
+  border-radius: 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.status-completed {
+  background-color: #dcfce7;
+  color: #166534;
+}
+
+.status-processing {
+  background-color: #fef3c7;
+  color: #92400e;
+}
+
+.status-failed {
+  background-color: #fee2e2;
+  color: #991b1b;
+}
+
+/* Episode Meta */
+.episode-meta {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  font-size: 0.875rem;
+  color: #6b7280;
+}
+
+.episode-date,
+.episode-duration {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+/* View Transcript Button */
+.view-transcript-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: white;
+  background-color: #3b82f6;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-top: 0.5rem;
+}
+
+.view-transcript-button:hover {
+  background-color: #2563eb;
+  transform: translateY(-1px);
+}
+
+/* Processing Indicator */
+.processing-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  color: #92400e;
+  background-color: #fef3c7;
+  border-radius: 8px;
+  margin-top: 0.5rem;
+}
+
+.spinner {
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid rgba(146, 64, 14, 0.3);
+  border-top-color: #92400e;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.spinner.small {
+  width: 1rem;
+  height: 1rem;
+}
+
+.spinner.large {
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 3px solid #e5e7eb;
+  border-top-color: #3b82f6;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Failed Indicator */
+.failed-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  color: #991b1b;
+  background-color: #fee2e2;
+  border-radius: 8px;
+  margin-top: 0.5rem;
+}
+
+/* Skeleton Loader */
+.episode-card.skeleton {
+  pointer-events: none;
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.skeleton-line {
+  background: linear-gradient(90deg, #f3f4f6 25%, #e5e7eb 50%, #f3f4f6 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 4px;
+}
+
+.skeleton-title {
+  height: 1.5rem;
+  width: 80%;
+  margin-bottom: 0.75rem;
+}
+
+.skeleton-subtitle {
+  height: 1rem;
+  width: 60%;
+  margin-bottom: 0.75rem;
+}
+
+.skeleton-meta {
+  height: 0.875rem;
+  width: 40%;
+  margin-bottom: 1rem;
+}
+
+.skeleton-button {
+  height: 2.5rem;
+  width: 100%;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+/* Pagination */
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 2rem 0 1rem;
+  flex-wrap: wrap;
+}
+
+.pagination-button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: #4b5563;
+  background-color: white;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.pagination-button:hover:not(:disabled) {
+  border-color: #3b82f6;
+  color: #3b82f6;
+}
+
+.pagination-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.pagination-pages {
+  display: flex;
+  gap: 0.375rem;
+  align-items: center;
+}
+
+.pagination-page {
+  min-width: 2.5rem;
+  height: 2.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: #4b5563;
+  background-color: white;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.pagination-page:hover {
+  border-color: #3b82f6;
+  color: #3b82f6;
+}
+
+.pagination-page.active {
+  background-color: #3b82f6;
+  border-color: #3b82f6;
+  color: white;
+}
+
+.pagination-ellipsis {
+  padding: 0 0.5rem;
+  color: #9ca3af;
+  font-weight: 600;
+}
+
+/* Results Summary */
+.results-summary {
+  text-align: center;
+  font-size: 0.9375rem;
+  color: #6b7280;
+  margin-top: 1rem;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .episode-transcripts-container {
+    padding: 1.5rem 1rem;
+  }
+
+  .episode-transcripts-header h1 {
+    font-size: 2rem;
+  }
+
+  .episode-transcripts-header p {
+    font-size: 1rem;
+  }
+
+  .episodes-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .filters {
+    justify-content: flex-start;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .filter-button {
+    flex-shrink: 0;
+  }
+
+  .pagination {
+    gap: 0.375rem;
+  }
+
+  .pagination-button {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+  }
+
+  .pagination-prev span,
+  .pagination-next span {
+    display: none;
+  }
+
+  .pagination-pages {
+    gap: 0.25rem;
+  }
+
+  .pagination-page {
+    min-width: 2.25rem;
+    height: 2.25rem;
+    font-size: 0.875rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .episode-transcripts-header h1 {
+    font-size: 1.75rem;
+  }
+
+  .episode-card {
+    padding: 1.25rem;
+  }
+
+  .episode-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .status-badge {
+    align-self: flex-start;
+  }
+
+  .episode-meta {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+}
