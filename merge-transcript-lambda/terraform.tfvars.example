@@ -1,0 +1,24 @@
+# AWS Configuration
+aws_region  = "us-east-1"
+environment = "dev"
+
+# Lambda Configuration
+function_name       = "merge-transcript-chunks"
+lambda_timeout      = 120  # 2 minutes
+lambda_memory_size  = 512  # MB
+lambda_concurrency  = 5
+
+# MongoDB Configuration (REQUIRED)
+mongodb_uri     = "mongodb+srv://username:password@cluster.mongodb.net/?retryWrites=true&w=majority"
+mongodb_db_name = "podcast_db"
+
+# S3 Configuration (REQUIRED)
+s3_bucket = "your-podcast-audio-bucket"
+
+# Logging Configuration
+log_retention_days = 30
+log_level         = "INFO"
+
+# Optional Features
+enable_function_url = false
+enable_monitoring   = true
