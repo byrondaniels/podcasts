@@ -1,0 +1,46 @@
+# AWS Configuration
+aws_region  = "us-east-1"
+environment = "dev"
+
+# Lambda Configuration
+lambda_function_name = "rss-feed-poller"
+python_runtime       = "python3.11"
+lambda_timeout       = 300  # 5 minutes
+lambda_memory_size   = 512  # MB
+
+# MongoDB Configuration
+# IMPORTANT: Replace with your actual MongoDB URI
+mongodb_uri = "mongodb+srv://username:password@cluster.mongodb.net/podcast-db?retryWrites=true&w=majority"
+
+# Step Functions Configuration
+# IMPORTANT: Replace with your actual Step Function ARN
+step_function_arn = "arn:aws:states:us-east-1:123456789012:stateMachine:episode-processor"
+
+# Scheduling
+schedule_expression = "rate(30 minutes)"
+
+# Logging
+log_retention_days = 14
+log_level          = "INFO"
+
+# Lambda Layer Configuration
+# Option 1: Create layer from zip (recommended)
+create_lambda_layer   = true
+lambda_layer_zip_path = "./lambda-layer.zip"
+
+# Option 2: Use existing layer ARNs
+# create_lambda_layer = false
+# lambda_layer_arns = [
+#   "arn:aws:lambda:us-east-1:123456789012:layer:podcast-dependencies:1"
+# ]
+
+# VPC Configuration (optional - for private MongoDB)
+enable_vpc = false
+# vpc_subnet_ids         = ["subnet-12345678", "subnet-87654321"]
+# vpc_security_group_ids = ["sg-12345678"]
+
+# Additional Tags
+tags = {
+  Project = "podcast-platform"
+  Team    = "engineering"
+}
