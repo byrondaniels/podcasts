@@ -1,0 +1,5 @@
+{
+  "episode_id": "test-ep-001",
+  "audio_url": "https://example.com/podcast-episode.mp3",
+  "s3_bucket": "your-podcast-audio-bucket"
+}
