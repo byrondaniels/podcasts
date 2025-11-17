@@ -1,5 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { episodeService } from '../services/episodeService';
+import { useClipboard } from '../hooks';
+import { Button, Spinner, Icon } from './shared';
 import type { Episode } from '../types/episode';
 import './TranscriptModal.css';
 
@@ -13,35 +15,9 @@ export const TranscriptModal = ({ episode, isOpen, onClose }: TranscriptModalPro
   const [transcript, setTranscript] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [copySuccess, setCopySuccess] = useState(false);
+  const { isCopied, copy } = useClipboard();
 
-  useEffect(() => {
-    if (isOpen && !transcript) {
-      fetchTranscript();
-    }
-  }, [isOpen, episode.episode_id]);
-
-  useEffect(() => {
-    // Handle ESC key to close modal
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) {
-        onClose();
-      }
-    };
-
-    // Prevent body scroll when modal is open
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-      document.addEventListener('keydown', handleEscape);
-    }
-
-    return () => {
-      document.body.style.overflow = 'unset';
-      document.removeEventListener('keydown', handleEscape);
-    };
-  }, [isOpen, onClose]);
-
-  const fetchTranscript = async () => {
+  const fetchTranscript = useCallback(async () => {
     setIsLoading(true);
     setError(null);
 
@@ -53,17 +29,35 @@ export const TranscriptModal = ({ episode, isOpen, onClose }: TranscriptModalPro
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [episode.episode_id]);
 
-  const handleCopyToClipboard = async () => {
-    if (!transcript) return;
+  useEffect(() => {
+    if (isOpen && !transcript) {
+      fetchTranscript();
+    }
+  }, [isOpen, transcript, fetchTranscript]);
 
-    try {
-      await navigator.clipboard.writeText(transcript);
-      setCopySuccess(true);
-      setTimeout(() => setCopySuccess(false), 2000);
-    } catch (err) {
-      console.error('Failed to copy transcript:', err);
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    document.body.style.overflow = 'hidden';
+    document.addEventListener('keydown', handleEscape);
+
+    return () => {
+      document.body.style.overflow = 'unset';
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [isOpen, onClose]);
+
+  const handleCopyToClipboard = () => {
+    if (transcript) {
+      copy(transcript);
     }
   };
 
@@ -78,7 +72,6 @@ export const TranscriptModal = ({ episode, isOpen, onClose }: TranscriptModalPro
   return (
     <div className="transcript-modal-backdrop" onClick={handleBackdropClick}>
       <div className="transcript-modal">
-        {/* Modal Header */}
         <div className="transcript-modal-header">
           <div className="transcript-modal-title-section">
             <h2 className="transcript-modal-title">{episode.episode_title}</h2>
@@ -89,60 +82,40 @@ export const TranscriptModal = ({ episode, isOpen, onClose }: TranscriptModalPro
             className="transcript-modal-close-button"
             aria-label="Close modal"
           >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
+            <Icon name="close" />
           </button>
         </div>
 
-        {/* Modal Content */}
         <div className="transcript-modal-content">
           {isLoading && (
             <div className="transcript-loading">
-              <span className="spinner large"></span>
+              <Spinner size="large" />
               <p>Loading transcript...</p>
             </div>
           )}
 
           {error && (
             <div className="transcript-error">
-              <svg className="transcript-error-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
+              <Icon name="error" className="transcript-error-icon" />
               <p>{error}</p>
-              <button onClick={fetchTranscript} className="transcript-retry-button">
+              <Button onClick={fetchTranscript} variant="secondary">
                 Try Again
-              </button>
+              </Button>
             </div>
           )}
 
           {transcript && !isLoading && !error && (
             <>
               <div className="transcript-actions">
-                <button
+                <Button
                   onClick={handleCopyToClipboard}
-                  className={`copy-button ${copySuccess ? 'copy-success' : ''}`}
+                  variant={isCopied ? 'secondary' : 'primary'}
+                  leftIcon={<Icon name={isCopied ? 'check' : 'copy'} size={20} />}
                 >
-                  {copySuccess ? (
-                    <>
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                      </svg>
-                      Copied!
-                    </>
-                  ) : (
-                    <>
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                      </svg>
-                      Copy to Clipboard
-                    </>
-                  )}
-                </button>
+                  {isCopied ? 'Copied!' : 'Copy to Clipboard'}
+                </Button>
               </div>
-              <div className="transcript-text">
-                {transcript}
-              </div>
+              <div className="transcript-text">{transcript}</div>
             </>
           )}
         </div>
