@@ -10,13 +10,13 @@ from botocore.exceptions import ClientError
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-# Initialize clients
-s3_client = boto3.client('s3')
-openai_client = OpenAI(api_key=os.environ['OPENAI_API_KEY'])
-
 # Constants
 MAX_RETRIES = 3
 INITIAL_RETRY_DELAY = 1  # seconds
+
+# Initialize clients
+s3_client = boto3.client('s3')
+openai_client = OpenAI(api_key=os.environ['OPENAI_API_KEY'])
 
 
 def download_from_s3(bucket, key, local_path):

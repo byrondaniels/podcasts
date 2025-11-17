@@ -11,6 +11,9 @@ from typing import Dict, List, Any, Optional
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
+# Constants
+TIMESTAMP_INTERVAL_SECONDS = 300  # Add timestamp every 5 minutes
+
 # Initialize clients
 s3_client = boto3.client('s3')
 
@@ -116,7 +119,7 @@ def merge_transcripts(transcripts: List[Dict[str, Any]], s3_bucket: str, add_tim
     """
     merged_text_parts = []
     total_words = 0
-    last_timestamp_seconds = -300  # Force timestamp at the beginning
+    last_timestamp_seconds = -TIMESTAMP_INTERVAL_SECONDS  # Force timestamp at the beginning
 
     for transcript_meta in transcripts:
         chunk_index = transcript_meta['chunk_index']
@@ -136,7 +139,7 @@ def merge_transcripts(transcripts: List[Dict[str, Any]], s3_bucket: str, add_tim
             continue
 
         # Add timestamp header if 5 minutes have passed
-        if add_timestamps and (start_time_seconds - last_timestamp_seconds) >= 300:
+        if add_timestamps and (start_time_seconds - last_timestamp_seconds) >= TIMESTAMP_INTERVAL_SECONDS:
             timestamp_header = f"\n{format_timestamp(start_time_seconds)}\n"
             merged_text_parts.append(timestamp_header)
             last_timestamp_seconds = start_time_seconds
