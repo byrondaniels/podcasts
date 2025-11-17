@@ -1,0 +1,20 @@
+# AWS Configuration
+aws_region  = "us-east-1"
+environment = "dev"
+
+# Project Configuration
+project_name = "podcast"
+
+# Secrets (IMPORTANT: Do not commit actual values to git)
+# Store these in terraform.tfvars which should be in .gitignore
+mongodb_uri     = "mongodb+srv://username:password@cluster.mongodb.net/podcast_db"
+openai_api_key  = "sk-..."
+
+# Optional: Logging
+log_level = "INFO"
+
+# Optional: Additional tags
+tags = {
+  Team = "Engineering"
+  Cost = "Development"
+}
