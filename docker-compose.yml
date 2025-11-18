@@ -51,10 +51,10 @@ services:
       retries: 5
       start_period: 30s
 
-  # Backend API (FastAPI)
+  # Backend API (Go)
   backend:
     build:
-      context: ./server
+      context: ./server-go
       dockerfile: Dockerfile
     container_name: podcast-backend
     restart: unless-stopped
@@ -63,7 +63,6 @@ services:
     environment:
       - MONGODB_URL=mongodb://mongodb:27017
       - MONGODB_DB_NAME=podcast_db
-      - AWS_ENDPOINT_URL=http://localstack:4566
       - AWS_DEFAULT_REGION=us-east-1
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test
@@ -74,9 +73,6 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - APP_HOST=0.0.0.0
       - APP_PORT=8000
-    volumes:
-      - ./server/app:/app/app:ro
-      - ./server/scripts:/app/scripts:ro
     depends_on:
       mongodb:
         condition: service_healthy
@@ -85,12 +81,11 @@ services:
     networks:
       - podcast-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8000/health"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 40s
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
   # Whisper ASR Service (Dev-only local transcription)
   whisper:
