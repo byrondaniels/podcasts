@@ -59,23 +59,21 @@ module "step_functions" {
   merge_transcripts_arn = module.lambda_merge_transcripts.lambda_arn
 }
 
-# Lambda: RSS Poller
+# Lambda: RSS Poller (Go - improved performance with concurrent processing)
 module "lambda_rss_poller" {
-  source = "./modules/lambda"
+  source = "./modules/lambda-go"
 
   function_name   = "rss-feed-poller"
-  handler         = "handler.lambda_handler"
-  runtime         = "python3.11"
+  zip_file_path   = "../poll-lambda-go/poll-lambda-go.zip"
   timeout         = 300
-  memory_size     = 512
-  source_dir      = "../poll-lambda"
+  memory_size     = 256  # Reduced from 512 - Go uses less memory
   environment     = var.environment
 
   environment_variables = {
-    MONGODB_URI_PARAM  = module.ssm_parameters.mongodb_uri_param_name
+    MONGODB_URI        = var.mongodb_uri
     STEP_FUNCTION_ARN  = module.step_functions.state_machine_arn
     AWS_REGION         = var.aws_region
-    LOG_LEVEL          = var.log_level
+    S3_BUCKET          = module.s3_buckets.audio_bucket_name
   }
 
   policy_statements = [
@@ -196,24 +194,22 @@ module "lambda_transcribe_chunk" {
   ]
 }
 
-# Lambda: Merge Transcripts
+# Lambda: Merge Transcripts (Go - improved performance with efficient text processing)
 module "lambda_merge_transcripts" {
-  source = "./modules/lambda"
+  source = "./modules/lambda-go"
 
   function_name   = "merge-transcript-chunks"
-  handler         = "handler.lambda_handler"
-  runtime         = "python3.11"
+  zip_file_path   = "../merge-transcript-lambda-go/merge-transcript-lambda-go.zip"
   timeout         = 120
-  memory_size     = 512
-  source_dir      = "../merge-transcript-lambda/lambda"
+  memory_size     = 256  # Reduced from 512 - Go uses less memory
   environment     = var.environment
 
   reserved_concurrent_executions = 5
 
   environment_variables = {
-    MONGODB_URI_PARAM = module.ssm_parameters.mongodb_uri_param_name
-    S3_BUCKET         = module.s3_buckets.audio_bucket_name
-    LOG_LEVEL         = var.log_level
+    MONGODB_URI = var.mongodb_uri
+    S3_BUCKET   = module.s3_buckets.audio_bucket_name
+    AWS_REGION  = var.aws_region
   }
 
   policy_statements = [
