@@ -8,7 +8,7 @@ from fastapi.exceptions import RequestValidationError
 
 from app.config import settings
 from app.database import MongoDB
-from app.routes import podcasts_router, episodes_router
+from app.routes import podcasts_router, episodes_router, dev_bulk_transcribe_router
 
 # Configure logging
 logging.basicConfig(
@@ -116,6 +116,7 @@ async def root():
 # Include routers
 app.include_router(podcasts_router)
 app.include_router(episodes_router)
+app.include_router(dev_bulk_transcribe_router)
 
 
 # Middleware for request logging

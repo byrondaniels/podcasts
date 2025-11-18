@@ -276,6 +276,113 @@ def create_episodes_indexes(db):
         raise
 
 
+def create_bulk_transcribe_jobs_collection(db):
+    """Create bulk transcribe jobs collection."""
+    logger.info("Creating bulk_transcribe_jobs collection...")
+
+    jobs_validator = {
+        '$jsonSchema': {
+            'bsonType': 'object',
+            'required': ['job_id', 'rss_url', 'status', 'total_episodes', 'created_at'],
+            'properties': {
+                'job_id': {
+                    'bsonType': 'string',
+                    'description': 'Unique job identifier - required'
+                },
+                'rss_url': {
+                    'bsonType': 'string',
+                    'description': 'RSS feed URL being processed - required'
+                },
+                'podcast_title': {
+                    'bsonType': 'string',
+                    'description': 'Podcast title'
+                },
+                'status': {
+                    'enum': ['pending', 'running', 'paused', 'completed', 'failed', 'cancelled'],
+                    'description': 'Job status - required'
+                },
+                'total_episodes': {
+                    'bsonType': 'int',
+                    'minimum': 0,
+                    'description': 'Total episodes to process - required'
+                },
+                'processed_episodes': {
+                    'bsonType': 'int',
+                    'minimum': 0,
+                    'description': 'Number of episodes processed'
+                },
+                'successful_episodes': {
+                    'bsonType': 'int',
+                    'minimum': 0,
+                    'description': 'Number of successfully transcribed episodes'
+                },
+                'failed_episodes': {
+                    'bsonType': 'int',
+                    'minimum': 0,
+                    'description': 'Number of failed episodes'
+                },
+                'created_at': {
+                    'bsonType': 'date',
+                    'description': 'Job creation timestamp - required'
+                },
+                'updated_at': {
+                    'bsonType': 'date',
+                    'description': 'Last update timestamp'
+                },
+                'completed_at': {
+                    'bsonType': 'date',
+                    'description': 'Job completion timestamp'
+                },
+                'current_episode': {
+                    'bsonType': 'string',
+                    'description': 'Currently processing episode title'
+                },
+                'episodes': {
+                    'bsonType': 'array',
+                    'description': 'Array of episode progress objects'
+                }
+            }
+        }
+    }
+
+    try:
+        db.create_collection('bulk_transcribe_jobs', validator=jobs_validator)
+        logger.info("✓ Bulk transcribe jobs collection created with validation rules")
+    except CollectionInvalid:
+        logger.warning("Bulk transcribe jobs collection already exists, updating validator...")
+        db.command('collMod', 'bulk_transcribe_jobs', validator=jobs_validator)
+        logger.info("✓ Bulk transcribe jobs collection validator updated")
+    except Exception as e:
+        logger.error(f"Error creating bulk transcribe jobs collection: {e}")
+        raise
+
+
+def create_bulk_transcribe_jobs_indexes(db):
+    """Create indexes for bulk transcribe jobs collection."""
+    logger.info("Creating indexes for bulk_transcribe_jobs collection...")
+
+    jobs = db.bulk_transcribe_jobs
+
+    try:
+        # Drop existing indexes except _id
+        jobs.drop_indexes()
+
+        # Create indexes
+        jobs.create_index([('job_id', ASCENDING)], unique=True, name='job_id_unique')
+        logger.info("  ✓ Created unique index on job_id")
+
+        jobs.create_index([('created_at', DESCENDING)], name='created_at_idx')
+        logger.info("  ✓ Created index on created_at")
+
+        jobs.create_index([('status', ASCENDING)], name='status_idx')
+        logger.info("  ✓ Created index on status")
+
+        logger.info("✓ All bulk transcribe jobs indexes created successfully")
+    except Exception as e:
+        logger.error(f"Error creating bulk transcribe jobs indexes: {e}")
+        raise
+
+
 def insert_sample_data(db):
     """Insert sample data for testing."""
     logger.info("Inserting sample data...")
@@ -433,10 +540,12 @@ def display_summary(db):
     # Count documents
     podcasts_count = db.podcasts.count_documents({})
     episodes_count = db.episodes.count_documents({})
+    jobs_count = db.bulk_transcribe_jobs.count_documents({})
 
-    logger.info(f"Collections created: 2 (podcasts, episodes)")
+    logger.info(f"Collections created: 3 (podcasts, episodes, bulk_transcribe_jobs)")
     logger.info(f"Podcasts in database: {podcasts_count}")
     logger.info(f"Episodes in database: {episodes_count}")
+    logger.info(f"Bulk transcribe jobs in database: {jobs_count}")
 
     # Display indexes
     logger.info("\nPodcasts Indexes:")
@@ -445,6 +554,10 @@ def display_summary(db):
 
     logger.info("\nEpisodes Indexes:")
     for index in db.episodes.list_indexes():
+        logger.info(f"  - {index['name']}: {index.get('key', {})}")
+
+    logger.info("\nBulk Transcribe Jobs Indexes:")
+    for index in db.bulk_transcribe_jobs.list_indexes():
         logger.info(f"  - {index['name']}: {index.get('key', {})}")
 
     logger.info("\n" + "="*70)
@@ -463,10 +576,12 @@ def main():
         # Create collections with validation
         create_podcasts_collection(db)
         create_episodes_collection(db)
+        create_bulk_transcribe_jobs_collection(db)
 
         # Create indexes
         create_podcasts_indexes(db)
         create_episodes_indexes(db)
+        create_bulk_transcribe_jobs_indexes(db)
 
         # Insert sample data
         insert_sample_data(db)

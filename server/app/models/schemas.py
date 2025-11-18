@@ -13,6 +13,16 @@ class TranscriptStatus(str, Enum):
     FAILED = "failed"
 
 
+class BulkJobStatus(str, Enum):
+    """Bulk transcription job status."""
+    PENDING = "pending"
+    RUNNING = "running"
+    PAUSED = "paused"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
 # Request Models
 class SubscribePodcastRequest(BaseModel):
     """Request model for subscribing to a podcast."""
@@ -138,3 +148,66 @@ class SuccessResponse(BaseModel):
     """Generic success response."""
     message: str = Field(..., description="Success message")
     data: Optional[dict] = Field(None, description="Additional data")
+
+
+# Bulk Transcription Models
+class BulkTranscribeRequest(BaseModel):
+    """Request model for bulk transcribing podcast episodes."""
+    rss_url: HttpUrl = Field(..., description="RSS feed URL to process")
+    max_episodes: Optional[int] = Field(None, ge=1, description="Maximum number of episodes to process (default: all)")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "rss_url": "https://example.com/feed.rss",
+                "max_episodes": 10
+            }
+        }
+
+
+class BulkTranscribeEpisodeProgress(BaseModel):
+    """Progress for a single episode in a bulk job."""
+    episode_id: str = Field(..., description="Episode identifier")
+    title: str = Field(..., description="Episode title")
+    status: TranscriptStatus = Field(..., description="Transcription status")
+    error_message: Optional[str] = Field(None, description="Error message if failed")
+    started_at: Optional[datetime] = Field(None, description="When transcription started")
+    completed_at: Optional[datetime] = Field(None, description="When transcription completed")
+
+
+class BulkTranscribeJobResponse(BaseModel):
+    """Response model for bulk transcription job."""
+    job_id: str = Field(..., description="Unique job identifier")
+    rss_url: str = Field(..., description="RSS feed URL being processed")
+    status: BulkJobStatus = Field(..., description="Job status")
+    total_episodes: int = Field(..., description="Total episodes to process")
+    processed_episodes: int = Field(0, description="Number of episodes processed")
+    successful_episodes: int = Field(0, description="Number of successfully transcribed episodes")
+    failed_episodes: int = Field(0, description="Number of failed episodes")
+    created_at: datetime = Field(..., description="Job creation timestamp")
+    updated_at: datetime = Field(..., description="Last update timestamp")
+    completed_at: Optional[datetime] = Field(None, description="Job completion timestamp")
+    current_episode: Optional[str] = Field(None, description="Currently processing episode title")
+    episodes: Optional[List[BulkTranscribeEpisodeProgress]] = Field(None, description="Detailed episode progress")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "job_id": "job_abc123",
+                "rss_url": "https://example.com/feed.rss",
+                "status": "running",
+                "total_episodes": 10,
+                "processed_episodes": 3,
+                "successful_episodes": 2,
+                "failed_episodes": 1,
+                "created_at": "2025-01-15T10:00:00",
+                "updated_at": "2025-01-15T10:30:00",
+                "current_episode": "Episode 4: The Future of AI"
+            }
+        }
+
+
+class BulkTranscribeJobListResponse(BaseModel):
+    """Response model for list of bulk transcription jobs."""
+    jobs: List[BulkTranscribeJobResponse]
+    total: int

@@ -1,10 +1,13 @@
 import { useState } from 'react';
 import { PodcastSubscription } from './components/PodcastSubscription';
 import { EpisodeTranscripts } from './components/EpisodeTranscripts';
+import { BulkTranscriber } from './components/BulkTranscriber';
 import { Icon } from './components/shared';
 import './App.css';
 
-type Tab = 'subscriptions' | 'transcripts';
+type Tab = 'subscriptions' | 'transcripts' | 'bulk-transcribe';
+
+const isDevelopment = import.meta.env.DEV;
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>('subscriptions');
@@ -32,6 +35,16 @@ function App() {
               <Icon name="document" size={20} />
               Transcripts
             </button>
+            {isDevelopment && (
+              <button
+                onClick={() => setActiveTab('bulk-transcribe')}
+                className={`nav-tab ${activeTab === 'bulk-transcribe' ? 'active' : ''}`}
+              >
+                <Icon name="microphone" size={20} />
+                Bulk Transcribe
+                <span className="dev-badge">DEV</span>
+              </button>
+            )}
           </div>
         </div>
       </nav>
@@ -39,6 +52,7 @@ function App() {
       <main className="app-content">
         {activeTab === 'subscriptions' && <PodcastSubscription />}
         {activeTab === 'transcripts' && <EpisodeTranscripts />}
+        {activeTab === 'bulk-transcribe' && isDevelopment && <BulkTranscriber />}
       </main>
     </div>
   );

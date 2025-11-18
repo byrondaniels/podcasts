@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     aws_region: str = "us-east-1"
     s3_bucket_name: str = "podcast-transcripts"
 
+    # Transcription Configuration
+    openai_api_key: str = ""
+    whisper_service_url: str = "http://localhost:9000"
+
     # Application Configuration
     app_host: str = "0.0.0.0"
     app_port: int = 8000
