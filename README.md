@@ -211,11 +211,11 @@ podcasts/
 │   └── ready.d/
 │       └── init-aws.sh                  # S3 bucket creation script
 │
-├── *-lambda/                       # Lambda functions
-│   ├── poll-lambda/                     # RSS feed polling
-│   ├── chunking-lambda/                 # Audio chunking
-│   ├── whisper-lambda/                  # Transcription
-│   └── merge-transcript-lambda/         # Transcript merging
+├── *-lambda*/                      # Lambda functions
+│   ├── poll-lambda-go/                  # RSS feed polling (Go)
+│   ├── chunking-lambda/                 # Audio chunking (Python)
+│   ├── whisper-lambda/                  # Transcription (Python)
+│   └── merge-transcript-lambda-go/      # Transcript merging (Go)
 │
 ├── index.html                      # HTML template
 ├── package.json                    # Frontend dependencies
