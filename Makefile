@@ -180,3 +180,36 @@ prune: ## Remove unused Docker resources
 	@echo "$(BLUE)Pruning Docker resources...$(NC)"
 	docker system prune -f
 	@echo "$(GREEN)✓ Prune complete$(NC)"
+
+# Go Lambda build targets
+build-go-lambdas: build-poll-lambda-go build-merge-lambda-go ## Build all Go Lambda functions
+
+build-poll-lambda-go: ## Build Poll Lambda (Go)
+	@echo "$(BLUE)Building Poll Lambda (Go)...$(NC)"
+	cd poll-lambda-go && chmod +x build.sh && ./build.sh
+	@echo "$(GREEN)✓ Poll Lambda built$(NC)"
+
+build-merge-lambda-go: ## Build Merge Lambda (Go)
+	@echo "$(BLUE)Building Merge Lambda (Go)...$(NC)"
+	cd merge-transcript-lambda-go && chmod +x build.sh && ./build.sh
+	@echo "$(GREEN)✓ Merge Lambda built$(NC)"
+
+clean-go-lambdas: ## Clean Go Lambda build artifacts
+	@echo "$(BLUE)Cleaning Go Lambda artifacts...$(NC)"
+	rm -f poll-lambda-go/bootstrap poll-lambda-go/*.zip
+	rm -f merge-transcript-lambda-go/bootstrap merge-transcript-lambda-go/*.zip
+	@echo "$(GREEN)✓ Go Lambda artifacts cleaned$(NC)"
+
+test-go-lambdas: ## Run tests for Go Lambdas
+	@echo "$(BLUE)Testing Go Lambdas...$(NC)"
+	@echo "$(YELLOW)Running tests for Poll Lambda...$(NC)"
+	cd poll-lambda-go && go test -v ./...
+	@echo "$(YELLOW)Running tests for Merge Lambda...$(NC)"
+	cd merge-transcript-lambda-go && go test -v ./...
+	@echo "$(GREEN)✓ Tests complete$(NC)"
+
+go-mod-tidy: ## Run go mod tidy on all Go modules
+	@echo "$(BLUE)Running go mod tidy...$(NC)"
+	cd poll-lambda-go && go mod tidy
+	cd merge-transcript-lambda-go && go mod tidy
+	@echo "$(GREEN)✓ Go modules tidied$(NC)"
