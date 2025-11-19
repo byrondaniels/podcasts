@@ -30,6 +30,31 @@ dist-ssr
 .env.test.local
 .env.production.local
 
+# Go specific
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+go.work.sum
+
+# Go coverage files
+coverage.out
+coverage.html
+*.cover
+
+# Go build artifacts
+/bin/
+/pkg/
+/vendor/
+
+# Lambda build artifacts
+*.zip
+main
+
 # Terraform
 *.tfstate
 *.tfstate.*
@@ -37,3 +62,26 @@ dist-ssr
 .terraform/
 .terraform.lock.hcl
 terraform/modules/lambda/builds/*.zip
+
+# AWS/Cloud credentials and configs
+.aws/
+*.pem
+*.key
+
+# Local development
+.localstack/
+docker-compose.override.yml
+
+# Python (for mixed projects)
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.pytest_cache/
+*.egg-info/

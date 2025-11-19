@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/mmcdole/gofeed"
+	ext "github.com/mmcdole/gofeed/extensions"
 )
 
 func TestIsAudioType(t *testing.T) {
@@ -120,7 +121,7 @@ func TestExtractImageURL(t *testing.T) {
 		{
 			name: "iTunes image present",
 			feed: &gofeed.Feed{
-				ITunesExt: &gofeed.ITunesFeedExtension{
+				ITunesExt: &ext.ITunesFeedExtension{
 					Image: "https://example.com/itunes.jpg",
 				},
 				Image: &gofeed.Image{
@@ -164,7 +165,7 @@ func TestExtractAuthor(t *testing.T) {
 		{
 			name: "iTunes author present",
 			feed: &gofeed.Feed{
-				ITunesExt: &gofeed.ITunesFeedExtension{
+				ITunesExt: &ext.ITunesFeedExtension{
 					Author: "iTunes Author",
 				},
 				Author: &gofeed.Person{

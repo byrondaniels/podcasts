@@ -80,6 +80,10 @@ type StepFunctionInput struct {
 }
 
 func init() {
+	// Skip initialization during tests
+	if os.Getenv("SKIP_INIT") == "true" {
+		return
+	}
 	// Initialize global clients once
 	initMongoClient()
 	initSFNClient()
