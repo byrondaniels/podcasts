@@ -183,3 +183,19 @@ class RSSParser:
 
 # Create singleton instance
 rss_parser = RSSParser()
+
+
+# Helper function for bulk transcribe service
+async def parse_rss_feed(rss_url: str):
+    """
+    Parse RSS feed and return podcast data and episodes.
+
+    Args:
+        rss_url: URL of the RSS feed
+
+    Returns:
+        Tuple of (podcast_data, episodes)
+    """
+    podcast_data = await rss_parser.parse_podcast_feed(rss_url)
+    episodes = await rss_parser.parse_episodes(rss_url)
+    return podcast_data, episodes

@@ -155,21 +155,24 @@ class BulkTranscribeRequest(BaseModel):
     """Request model for bulk transcribing podcast episodes."""
     rss_url: HttpUrl = Field(..., description="RSS feed URL to process")
     max_episodes: Optional[int] = Field(None, ge=1, description="Maximum number of episodes to process (default: all)")
+    dry_run: bool = Field(False, description="If True, only transcribe 1 episode for testing purposes")
 
     class Config:
         json_schema_extra = {
             "example": {
                 "rss_url": "https://example.com/feed.rss",
-                "max_episodes": 10
+                "max_episodes": 10,
+                "dry_run": False
             }
         }
 
 
 class BulkTranscribeEpisodeProgress(BaseModel):
     """Progress for a single episode in a bulk job."""
-    episode_id: str = Field(..., description="Episode identifier")
+    episode_id: Optional[str] = Field(None, description="Episode identifier (set when processing starts)")
     title: str = Field(..., description="Episode title")
     status: TranscriptStatus = Field(..., description="Transcription status")
+    transcript: Optional[str] = Field(None, description="Transcript text (when completed)")
     error_message: Optional[str] = Field(None, description="Error message if failed")
     started_at: Optional[datetime] = Field(None, description="When transcription started")
     completed_at: Optional[datetime] = Field(None, description="When transcription completed")

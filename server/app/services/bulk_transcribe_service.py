@@ -21,19 +21,20 @@ class BulkTranscribeService:
         self.episodes_collection = db.episodes
         self.running_jobs: Dict[str, bool] = {}  # Track running jobs
 
-    async def create_job(self, rss_url: str, max_episodes: Optional[int] = None) -> Dict[str, Any]:
+    async def create_job(self, rss_url: str, max_episodes: Optional[int] = None, dry_run: bool = False) -> Dict[str, Any]:
         """
         Create a new bulk transcription job.
 
         Args:
             rss_url: RSS feed URL to process
             max_episodes: Maximum number of episodes to process (None = all)
+            dry_run: If True, only process 1 episode for testing
 
         Returns:
             Job document
         """
         try:
-            logger.info(f"Creating bulk transcribe job for: {rss_url}")
+            logger.info(f"Creating bulk transcribe job for: {rss_url} (dry_run={dry_run})")
 
             # Parse RSS feed to get episodes
             podcast_data, episodes = await parse_rss_feed(rss_url)
@@ -44,8 +45,12 @@ class BulkTranscribeService:
             # Sort episodes by published date (oldest first for chronological processing)
             episodes.sort(key=lambda e: e.get('published_date', datetime.min))
 
+            # Dry run mode: only process 1 episode
+            if dry_run:
+                logger.info("Dry run mode enabled - limiting to 1 episode")
+                episodes = episodes[:1]
             # Limit episodes if specified
-            if max_episodes and max_episodes > 0:
+            elif max_episodes and max_episodes > 0:
                 episodes = episodes[:max_episodes]
 
             # Create job document
@@ -173,9 +178,10 @@ class BulkTranscribeService:
                     transcript = await whisper_service.transcribe_audio_url(audio_url)
 
                     if transcript:
-                        # Success - update episode and job
+                        # Success - update episode and job with transcript
                         await self.update_episode_in_job(job_id, idx, {
                             "status": TranscriptStatus.COMPLETED.value,
+                            "transcript": transcript,
                             "completed_at": datetime.utcnow()
                         })
 
@@ -184,10 +190,7 @@ class BulkTranscribeService:
                             "successful_episodes": job.get("successful_episodes", 0) + 1
                         })
 
-                        logger.info(f"Successfully transcribed episode {idx + 1}")
-
-                        # Store transcript (you could save to S3 or DB here)
-                        # For now, just logging success
+                        logger.info(f"Successfully transcribed episode {idx + 1} - {len(transcript)} characters")
 
                     else:
                         # Failed - update episode and job

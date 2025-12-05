@@ -330,11 +330,11 @@ def create_bulk_transcribe_jobs_collection(db):
                     'description': 'Last update timestamp'
                 },
                 'completed_at': {
-                    'bsonType': 'date',
+                    'bsonType': ['date', 'null'],
                     'description': 'Job completion timestamp'
                 },
                 'current_episode': {
-                    'bsonType': 'string',
+                    'bsonType': ['string', 'null'],
                     'description': 'Currently processing episode title'
                 },
                 'episodes': {

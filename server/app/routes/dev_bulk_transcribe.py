@@ -34,7 +34,8 @@ async def start_bulk_transcribe(
         # Create job
         job = await service.create_job(
             rss_url=str(request.rss_url),
-            max_episodes=request.max_episodes
+            max_episodes=request.max_episodes,
+            dry_run=request.dry_run
         )
 
         # Start processing in background
@@ -46,6 +47,7 @@ async def start_bulk_transcribe(
                 episode_id=ep.get("episode_id", ""),
                 title=ep["title"],
                 status=ep["status"],
+                transcript=ep.get("transcript"),
                 error_message=ep.get("error_message"),
                 started_at=ep.get("started_at"),
                 completed_at=ep.get("completed_at")
@@ -92,6 +94,7 @@ async def get_bulk_transcribe_job(job_id: str):
                 episode_id=ep.get("episode_id", ""),
                 title=ep["title"],
                 status=ep["status"],
+                transcript=ep.get("transcript"),
                 error_message=ep.get("error_message"),
                 started_at=ep.get("started_at"),
                 completed_at=ep.get("completed_at")
