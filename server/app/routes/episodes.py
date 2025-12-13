@@ -82,8 +82,24 @@ async def get_episodes(
         # Calculate pagination
         skip = (page - 1) * limit
 
-        # Fetch episodes sorted by published date (newest first)
-        cursor = db.episodes.find(query).sort("published_date", -1).skip(skip).limit(limit)
+        # Fetch episodes with podcast info using aggregation
+        pipeline = [
+            {"$match": query},
+            {"$sort": {"published_date": -1}},
+            {"$skip": skip},
+            {"$limit": limit},
+            {
+                "$lookup": {
+                    "from": "podcasts",
+                    "localField": "podcast_id",
+                    "foreignField": "podcast_id",
+                    "as": "podcast"
+                }
+            },
+            {"$unwind": {"path": "$podcast", "preserveNullAndEmptyArrays": True}}
+        ]
+
+        cursor = db.episodes.aggregate(pipeline)
         episodes = await cursor.to_list(length=limit)
 
         # Check if there are more pages
@@ -204,10 +220,17 @@ async def get_episode_transcript(
 
 def _format_episode_response(episode_doc: dict) -> EpisodeResponse:
     """Format episode document as response model."""
+    # Extract podcast title from joined podcast data
+    podcast_title = "Unknown Podcast"
+    if "podcast" in episode_doc and episode_doc["podcast"]:
+        podcast_title = episode_doc["podcast"].get("title", "Unknown Podcast")
+
     return EpisodeResponse(
         episode_id=episode_doc["episode_id"],
         podcast_id=episode_doc["podcast_id"],
-        title=episode_doc["title"],
+        podcast_title=podcast_title,
+        episode_title=episode_doc["title"],
+        title=episode_doc["title"],  # For backwards compatibility
         description=episode_doc.get("description"),
         audio_url=episode_doc.get("audio_url"),
         published_date=episode_doc.get("published_date"),

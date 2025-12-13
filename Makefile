@@ -31,7 +31,7 @@ up: ## Start all services
 	@echo "$(GREEN)✓ Services started$(NC)"
 	@echo ""
 	@echo "$(BLUE)Service URLs:$(NC)"
-	@echo "  Frontend:  $(GREEN)http://localhost:3000$(NC)"
+	@echo "  Frontend:  $(GREEN)http://localhost:3017$(NC)"
 	@echo "  Backend:   $(GREEN)http://localhost:8000$(NC)"
 	@echo "  API Docs:  $(GREEN)http://localhost:8000/docs$(NC)"
 	@echo "  MongoDB:   $(GREEN)mongodb://localhost:27017$(NC)"
@@ -88,7 +88,7 @@ health: ## Check health of all services
 	@curl -f http://localhost:8000/health 2>/dev/null && echo "$(GREEN)✓ Healthy$(NC)" || echo "$(YELLOW)✗ Unhealthy$(NC)"
 	@echo ""
 	@echo "$(YELLOW)Frontend:$(NC)"
-	@curl -f http://localhost:3000 2>/dev/null > /dev/null && echo "$(GREEN)✓ Healthy$(NC)" || echo "$(YELLOW)✗ Unhealthy$(NC)"
+	@curl -f http://localhost:3017 2>/dev/null > /dev/null && echo "$(GREEN)✓ Healthy$(NC)" || echo "$(YELLOW)✗ Unhealthy$(NC)"
 	@echo ""
 	@echo "$(YELLOW)LocalStack:$(NC)"
 	@curl -f http://localhost:4566/_localstack/health 2>/dev/null > /dev/null && echo "$(GREEN)✓ Healthy$(NC)" || echo "$(YELLOW)✗ Unhealthy$(NC)"
@@ -133,7 +133,7 @@ install: setup up ## Full installation - setup and start services
 	@echo "$(BLUE)Next steps:$(NC)"
 	@echo "  1. Edit .env and add your OPENAI_API_KEY"
 	@echo "  2. Run 'make init-db' to initialize the database"
-	@echo "  3. Open http://localhost:3000 in your browser"
+	@echo "  3. Open http://localhost:3017 in your browser"
 
 dev: up logs ## Start services and follow logs
 

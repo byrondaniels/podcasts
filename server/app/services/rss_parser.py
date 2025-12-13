@@ -1,14 +1,57 @@
 """RSS feed parser service."""
 import logging
+import asyncio
 import feedparser
+import aiohttp
 from typing import Dict, Optional
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
+# RSS feed fetch timeout in seconds
+RSS_FETCH_TIMEOUT = 10
+
 
 class RSSParser:
     """RSS feed parser for extracting podcast information."""
+
+    @staticmethod
+    async def _fetch_rss_content(rss_url: str) -> str:
+        """
+        Fetch RSS feed content with timeout.
+
+        Args:
+            rss_url: URL of the RSS feed
+
+        Returns:
+            RSS feed content as string
+
+        Raises:
+            ValueError: If feed cannot be fetched or times out
+        """
+        try:
+            logger.info(f"Fetching RSS feed from: {rss_url}")
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    rss_url,
+                    timeout=aiohttp.ClientTimeout(total=RSS_FETCH_TIMEOUT)
+                ) as response:
+                    if response.status != 200:
+                        raise ValueError(f"HTTP {response.status}: Failed to fetch RSS feed")
+
+                    content = await response.text()
+                    logger.info(f"Successfully fetched RSS feed ({len(content)} bytes)")
+                    return content
+
+        except asyncio.TimeoutError:
+            logger.error(f"Timeout fetching RSS feed from {rss_url}")
+            raise ValueError(f"Request timeout: RSS feed took longer than {RSS_FETCH_TIMEOUT} seconds to respond")
+        except aiohttp.ClientError as e:
+            logger.error(f"Network error fetching RSS feed: {e}")
+            raise ValueError(f"Network error: {str(e)}")
+        except Exception as e:
+            logger.error(f"Error fetching RSS feed from {rss_url}: {e}")
+            raise ValueError(f"Failed to fetch RSS feed: {str(e)}")
 
     @staticmethod
     async def parse_podcast_feed(rss_url: str) -> Dict[str, Optional[str]]:
@@ -27,8 +70,11 @@ class RSSParser:
         try:
             logger.info(f"Parsing RSS feed: {rss_url}")
 
-            # Parse the feed
-            feed = feedparser.parse(rss_url)
+            # Fetch RSS content with timeout
+            content = await RSSParser._fetch_rss_content(rss_url)
+
+            # Parse the feed from content
+            feed = feedparser.parse(content)
 
             # Check for errors
             if feed.bozo and not feed.entries:
@@ -51,6 +97,9 @@ class RSSParser:
             logger.info(f"Successfully parsed podcast: {podcast_data['title']}")
             return podcast_data
 
+        except ValueError:
+            # Re-raise ValueError as-is (includes our timeout and HTTP errors)
+            raise
         except Exception as e:
             logger.error(f"Error parsing RSS feed {rss_url}: {e}")
             raise ValueError(f"Failed to parse RSS feed: {str(e)}")
@@ -98,7 +147,11 @@ class RSSParser:
         try:
             logger.info(f"Parsing episodes from RSS feed: {rss_url}")
 
-            feed = feedparser.parse(rss_url)
+            # Fetch RSS content with timeout
+            content = await RSSParser._fetch_rss_content(rss_url)
+
+            # Parse the feed from content
+            feed = feedparser.parse(content)
 
             if feed.bozo and not feed.entries:
                 error_msg = getattr(feed, 'bozo_exception', 'Unknown parsing error')
@@ -120,6 +173,9 @@ class RSSParser:
             logger.info(f"Successfully parsed {len(episodes)} episodes")
             return episodes
 
+        except ValueError:
+            # Re-raise ValueError as-is (includes our timeout and HTTP errors)
+            raise
         except Exception as e:
             logger.error(f"Error parsing episodes from {rss_url}: {e}")
             raise ValueError(f"Failed to parse episodes: {str(e)}")
@@ -189,6 +245,7 @@ rss_parser = RSSParser()
 async def parse_rss_feed(rss_url: str):
     """
     Parse RSS feed and return podcast data and episodes.
+    Optimized to fetch the feed only once.
 
     Args:
         rss_url: URL of the RSS feed
@@ -196,6 +253,40 @@ async def parse_rss_feed(rss_url: str):
     Returns:
         Tuple of (podcast_data, episodes)
     """
-    podcast_data = await rss_parser.parse_podcast_feed(rss_url)
-    episodes = await rss_parser.parse_episodes(rss_url)
+    # Fetch RSS content once with timeout
+    content = await rss_parser._fetch_rss_content(rss_url)
+
+    # Parse the content for both podcast data and episodes
+    feed = feedparser.parse(content)
+
+    # Check for errors
+    if feed.bozo and not feed.entries:
+        error_msg = getattr(feed, 'bozo_exception', 'Unknown parsing error')
+        raise ValueError(f"Invalid RSS feed: {error_msg}")
+
+    # Check if feed has channel information
+    if not hasattr(feed, 'feed'):
+        raise ValueError("RSS feed does not contain channel information")
+
+    # Extract podcast metadata
+    podcast_data = {
+        "title": feed.feed.get("title", "Untitled Podcast"),
+        "description": feed.feed.get("description") or feed.feed.get("subtitle"),
+        "image_url": rss_parser._extract_image_url(feed.feed),
+        "author": feed.feed.get("author") or feed.feed.get("itunes_author"),
+    }
+
+    # Extract episodes
+    episodes = []
+    for entry in feed.entries:
+        episode_data = {
+            "title": entry.get("title", "Untitled Episode"),
+            "description": entry.get("description") or entry.get("summary"),
+            "audio_url": rss_parser._extract_audio_url(entry),
+            "published_date": rss_parser._parse_published_date(entry),
+            "duration_minutes": rss_parser._extract_duration(entry),
+        }
+        episodes.append(episode_data)
+
+    logger.info(f"Successfully parsed podcast '{podcast_data['title']}' with {len(episodes)} episodes")
     return podcast_data, episodes

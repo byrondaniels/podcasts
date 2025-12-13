@@ -73,7 +73,9 @@ class EpisodeResponse(BaseModel):
     """Response model for episode data."""
     episode_id: str = Field(..., description="Unique episode identifier")
     podcast_id: str = Field(..., description="Parent podcast identifier")
-    title: str = Field(..., description="Episode title")
+    podcast_title: str = Field(..., description="Podcast title")
+    episode_title: str = Field(..., description="Episode title")
+    title: Optional[str] = Field(None, description="Deprecated: use episode_title")
     description: Optional[str] = Field(None, description="Episode description")
     audio_url: Optional[str] = Field(None, description="Original audio URL")
     published_date: Optional[datetime] = Field(None, description="Episode publication date")
@@ -85,6 +87,7 @@ class EpisodeResponse(BaseModel):
     processed_at: Optional[datetime] = Field(None, description="When processing completed")
 
     class Config:
+        populate_by_name = True
         json_schema_extra = {
             "example": {
                 "episode_id": "ep_xyz789",
