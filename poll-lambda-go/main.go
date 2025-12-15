@@ -182,8 +182,18 @@ func processPodcast(ctx context.Context, podcast Podcast, db *mongo.Database) Po
 
 	episodesCollection := db.Collection("episodes")
 
+	// Limit to the last 10 episodes (most recent)
+	// RSS feeds typically list newest episodes first, so we take the first 10
+	maxEpisodes := 10
+	itemsToProcess := feed.Items
+	if len(feed.Items) > maxEpisodes {
+		itemsToProcess = feed.Items[:maxEpisodes]
+		log.Printf("Limiting to %d most recent episodes out of %d total for podcast %s",
+			maxEpisodes, len(feed.Items), podcast.Title)
+	}
+
 	// Process each episode in the feed
-	for _, item := range feed.Items {
+	for _, item := range itemsToProcess {
 		audioURL := extractAudioURL(item)
 		if audioURL == "" {
 			log.Printf("No audio URL found for episode: %s", item.Title)

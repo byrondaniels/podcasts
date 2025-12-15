@@ -22,34 +22,77 @@ services:
       retries: 5
       start_period: 20s
 
-  # LocalStack (AWS Services Emulation) - DISABLED FOR BULK TRANSCRIBE TESTING
-  # localstack:
-  #   image: localstack/localstack:latest
-  #   container_name: podcast-localstack
-  #   restart: unless-stopped
-  #   ports:
-  #     - "4566:4566"
-  #     - "4510-4559:4510-4559"
-  #   environment:
-  #     - SERVICES=s3,lambda,stepfunctions
-  #     - DEBUG=1
-  #     - DATA_DIR=/tmp/localstack/data
-  #     - DOCKER_HOST=unix:///var/run/docker.sock
-  #     - AWS_DEFAULT_REGION=us-east-1
-  #     - AWS_ACCESS_KEY_ID=test
-  #     - AWS_SECRET_ACCESS_KEY=test
-  #   volumes:
-  #     - localstack-data:/tmp/localstack
-  #     - /var/run/docker.sock:/var/run/docker.sock
-  #     - ./localstack-init:/etc/localstack/init:ro
-  #   networks:
-  #     - podcast-network
-  #   healthcheck:
-  #     test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
-  #     interval: 10s
-  #     timeout: 5s
-  #     retries: 5
-  #     start_period: 30s
+  # LocalStack (AWS Services Emulation)
+  localstack:
+    image: localstack/localstack:latest
+    container_name: podcast-localstack
+    restart: unless-stopped
+    ports:
+      - "4566:4566"
+      - "4510-4559:4510-4559"
+    environment:
+      - SERVICES=s3,lambda,stepfunctions,events
+      - DEBUG=1
+      - DATA_DIR=/tmp/localstack/data
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - AWS_DEFAULT_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - LAMBDA_RUNTIME_ENVIRONMENT_TIMEOUT=900
+    volumes:
+      - localstack-data:/tmp/localstack
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./localstack-init:/etc/localstack/init/ready.d:ro
+      - ./poll-lambda-go/bootstrap:/tmp/lambda/poll-lambda/bootstrap:ro
+      - ./merge-transcript-lambda-go/bootstrap:/tmp/lambda/merge-lambda/bootstrap:ro
+      - ./chunking-lambda/chunking-lambda.zip:/tmp/lambda/chunking-lambda.zip:ro
+      - ./whisper-lambda/whisper-lambda.zip:/tmp/lambda/whisper-lambda.zip:ro
+    networks:
+      - podcast-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      mongodb:
+        condition: service_healthy
+
+  # Go Lambda Builder - builds Lambda functions without requiring Go locally
+  lambda-builder-poll:
+    image: golang:1.21-alpine
+    container_name: podcast-lambda-builder-poll
+    working_dir: /build
+    volumes:
+      - ./poll-lambda-go:/build
+    command: sh -c "apk add --no-cache git && chmod +x /build/build-docker.sh && /build/build-docker.sh"
+    networks:
+      - podcast-network
+
+  lambda-builder-merge:
+    image: golang:1.21-alpine
+    container_name: podcast-lambda-builder-merge
+    working_dir: /build
+    volumes:
+      - ./merge-transcript-lambda-go:/build
+    command: sh -c "apk add --no-cache git && chmod +x /build/build-docker.sh && /build/build-docker.sh"
+    networks:
+      - podcast-network
+
+  # Python Lambda Builder - packages Python Lambda functions
+  lambda-builder-python:
+    image: python:3.11-slim
+    container_name: podcast-lambda-builder-python
+    working_dir: /build
+    volumes:
+      - ./chunking-lambda:/build/chunking-lambda
+      - ./whisper-lambda:/build/whisper-lambda
+      - ./lambda-packages:/build/packages
+    entrypoint: ["/bin/bash"]
+    command: -c "chmod +x /build/chunking-lambda/build-docker.sh && /build/chunking-lambda/build-docker.sh && chmod +x /build/whisper-lambda/build-docker.sh && /build/whisper-lambda/build-docker.sh"
+    networks:
+      - podcast-network
 
   # Backend API (Python FastAPI)
   backend:

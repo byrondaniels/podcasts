@@ -1,4 +1,5 @@
 import { useState, useEffect, FormEvent, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { podcastService } from '../services/podcastService';
 import { validateUrl } from '../utils';
 import { Alert, Button, Spinner, EmptyState, Icon } from './shared';
@@ -6,6 +7,7 @@ import type { Podcast } from '../types/podcast';
 import './PodcastSubscription.css';
 
 export const PodcastSubscription = () => {
+  const navigate = useNavigate();
   const [rssUrl, setRssUrl] = useState('');
   const [podcasts, setPodcasts] = useState<Podcast[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -47,7 +49,10 @@ export const PodcastSubscription = () => {
 
     try {
       const result = await podcastService.subscribe(rssUrl);
-      setSuccessMessage(`Successfully subscribed to "${result.title}"!`);
+      const episodeInfo = result.episode_count
+        ? ` Found ${result.episode_count} episode${result.episode_count === 1 ? '' : 's'} available for transcription.`
+        : '';
+      setSuccessMessage(`Successfully subscribed to "${result.title}"!${episodeInfo}`);
       setRssUrl('');
       await fetchPodcasts();
     } catch (err) {
@@ -79,6 +84,10 @@ export const PodcastSubscription = () => {
     setValidationError(null);
     setError(null);
     setSuccessMessage(null);
+  };
+
+  const handleViewTranscripts = (podcastId: string) => {
+    navigate(`/transcripts?podcast=${podcastId}`);
   };
 
   return (
@@ -141,7 +150,17 @@ export const PodcastSubscription = () => {
           <div className="podcasts-grid">
             {podcasts.map((podcast) => (
               <div key={podcast.podcast_id} className="podcast-card">
-                <div className="podcast-image-container">
+                <div
+                  className="podcast-image-container clickable"
+                  onClick={() => handleViewTranscripts(podcast.podcast_id)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      handleViewTranscripts(podcast.podcast_id);
+                    }
+                  }}
+                >
                   {podcast.image_url ? (
                     <img
                       src={podcast.image_url}
@@ -159,25 +178,52 @@ export const PodcastSubscription = () => {
                   )}
                 </div>
                 <div className="podcast-content">
-                  <h3 className="podcast-title">{podcast.title}</h3>
+                  <h3
+                    className="podcast-title clickable"
+                    onClick={() => handleViewTranscripts(podcast.podcast_id)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        handleViewTranscripts(podcast.podcast_id);
+                      }
+                    }}
+                  >
+                    {podcast.title}
+                  </h3>
                   <p className="podcast-description">{podcast.description}</p>
-                  <div className="podcast-footer">
-                    <a
-                      href={podcast.rss_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="rss-link"
-                    >
-                      <Icon name="rss" className="rss-icon" size={16} />
-                      RSS Feed
-                    </a>
+                  {podcast.episode_count !== undefined && (
+                    <p className="podcast-episode-count">
+                      <Icon name="document" size={16} />
+                      {podcast.episode_count} episode{podcast.episode_count === 1 ? '' : 's'}
+                    </p>
+                  )}
+                  <div className="podcast-actions">
                     <Button
-                      onClick={() => handleUnsubscribe(podcast.podcast_id, podcast.title)}
-                      variant="danger"
+                      onClick={() => handleViewTranscripts(podcast.podcast_id)}
+                      variant="primary"
                       size="small"
                     >
-                      Unsubscribe
+                      View Transcripts
                     </Button>
+                    <div className="podcast-footer">
+                      <a
+                        href={podcast.rss_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="rss-link"
+                      >
+                        <Icon name="rss" className="rss-icon" size={16} />
+                        RSS Feed
+                      </a>
+                      <Button
+                        onClick={() => handleUnsubscribe(podcast.podcast_id, podcast.title)}
+                        variant="danger"
+                        size="small"
+                      >
+                        Unsubscribe
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </div>

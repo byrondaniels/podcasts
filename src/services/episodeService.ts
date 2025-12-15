@@ -1,5 +1,4 @@
 import type {
-  Episode,
   GetEpisodesParams,
   GetEpisodesResponse,
   TranscriptResponse,

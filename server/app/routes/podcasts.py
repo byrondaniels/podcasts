@@ -67,9 +67,13 @@ async def subscribe_to_podcast(
                     detail="Already subscribed to this podcast"
                 )
 
-        # Parse RSS feed to get podcast metadata
+        # Parse RSS feed to get podcast metadata and episode count
         try:
-            podcast_data = await rss_parser.parse_podcast_feed(rss_url)
+            # Use the optimized parser that fetches the feed once
+            from app.services.rss_parser import parse_rss_feed
+            podcast_data, episodes = await parse_rss_feed(rss_url)
+            episode_count = len(episodes)
+            logger.info(f"Found {episode_count} episodes in RSS feed")
         except ValueError as e:
             logger.error(f"Failed to parse RSS feed: {e}")
             raise HTTPException(
@@ -90,6 +94,7 @@ async def subscribe_to_podcast(
             "author": podcast_data["author"],
             "subscribed_at": datetime.utcnow(),
             "active": True,
+            "episode_count": episode_count,
         }
 
         # Insert into database
@@ -222,4 +227,5 @@ def _format_podcast_response(podcast_doc: dict) -> PodcastResponse:
         author=podcast_doc.get("author"),
         subscribed_at=podcast_doc["subscribed_at"],
         active=podcast_doc.get("active", True),
+        episode_count=podcast_doc.get("episode_count"),
     )

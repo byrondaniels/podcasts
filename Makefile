@@ -184,15 +184,35 @@ prune: ## Remove unused Docker resources
 # Go Lambda build targets
 build-go-lambdas: build-poll-lambda-go build-merge-lambda-go ## Build all Go Lambda functions
 
-build-poll-lambda-go: ## Build Poll Lambda (Go)
-	@echo "$(BLUE)Building Poll Lambda (Go)...$(NC)"
-	cd poll-lambda-go && chmod +x build.sh && ./build.sh
+build-poll-lambda-go: ## Build Poll Lambda (Go) using Docker
+	@echo "$(BLUE)Building Poll Lambda (Go) in Docker...$(NC)"
+	docker-compose run --rm lambda-builder-poll
 	@echo "$(GREEN)✓ Poll Lambda built$(NC)"
 
-build-merge-lambda-go: ## Build Merge Lambda (Go)
-	@echo "$(BLUE)Building Merge Lambda (Go)...$(NC)"
-	cd merge-transcript-lambda-go && chmod +x build.sh && ./build.sh
+build-merge-lambda-go: ## Build Merge Lambda (Go) using Docker
+	@echo "$(BLUE)Building Merge Lambda (Go) in Docker...$(NC)"
+	docker-compose run --rm lambda-builder-merge
 	@echo "$(GREEN)✓ Merge Lambda built$(NC)"
+
+build-chunking-lambda: ## Build Chunking Lambda (Python) using Docker
+	@echo "$(BLUE)Building Chunking Lambda (Python) in Docker...$(NC)"
+	docker run --rm -v $(PWD)/chunking-lambda:/build/chunking-lambda -w /build/chunking-lambda python:3.11-slim bash -c "chmod +x build-docker.sh && ./build-docker.sh"
+	@echo "$(GREEN)✓ Chunking Lambda built$(NC)"
+
+build-whisper-lambda: ## Build Whisper Lambda (Python) using Docker
+	@echo "$(BLUE)Building Whisper Lambda (Python) in Docker...$(NC)"
+	docker run --rm -v $(PWD)/whisper-lambda:/build/whisper-lambda -w /build/whisper-lambda python:3.11-slim bash -c "chmod +x build-docker.sh && ./build-docker.sh"
+	@echo "$(GREEN)✓ Whisper Lambda built$(NC)"
+
+build-all-lambdas: build-poll-lambda-go build-merge-lambda-go build-chunking-lambda build-whisper-lambda ## Build all Lambda functions
+
+clean-lambdas: ## Clean all Lambda build artifacts
+	@echo "$(BLUE)Cleaning Lambda artifacts...$(NC)"
+	rm -f poll-lambda-go/bootstrap poll-lambda-go/*.zip
+	rm -f merge-transcript-lambda-go/bootstrap merge-transcript-lambda-go/*.zip
+	rm -f chunking-lambda/*.zip chunking-lambda/package
+	rm -f whisper-lambda/*.zip whisper-lambda/package
+	@echo "$(GREEN)✓ Lambda artifacts cleaned$(NC)"
 
 clean-go-lambdas: ## Clean Go Lambda build artifacts
 	@echo "$(BLUE)Cleaning Go Lambda artifacts...$(NC)"
@@ -213,3 +233,40 @@ go-mod-tidy: ## Run go mod tidy on all Go modules
 	cd poll-lambda-go && go mod tidy
 	cd merge-transcript-lambda-go && go mod tidy
 	@echo "$(GREEN)✓ Go modules tidied$(NC)"
+
+deploy-lambdas: build-all-lambdas ## Build and deploy all Lambdas to LocalStack
+	@echo "$(BLUE)Deploying all Lambdas to LocalStack...$(NC)"
+	docker-compose exec localstack /etc/localstack/init/ready.d/init-lambda.sh
+	@echo "$(GREEN)✓ All Lambdas deployed to LocalStack$(NC)"
+
+list-lambdas: ## List all Lambda functions in LocalStack
+	@echo "$(BLUE)Lambda functions in LocalStack:$(NC)"
+	docker-compose exec localstack awslocal lambda list-functions --query 'Functions[].FunctionName' --output table
+
+invoke-poll-lambda: ## Manually invoke the poll Lambda in LocalStack
+	@echo "$(BLUE)Invoking poll-rss-feeds Lambda...$(NC)"
+	docker-compose exec localstack awslocal lambda invoke --function-name poll-rss-feeds /tmp/output.json
+	@echo "$(GREEN)Response:$(NC)"
+	docker-compose exec localstack cat /tmp/output.json | jq .
+	@echo ""
+
+invoke-chunking-lambda: ## Manually invoke the chunking Lambda in LocalStack
+	@echo "$(BLUE)Invoking chunking-lambda...$(NC)"
+	@echo '{"episode_id":"test123","audio_url":"https://example.com/audio.mp3","s3_bucket":"podcast-audio"}' | \
+	docker-compose exec -T localstack awslocal lambda invoke --function-name chunking-lambda --payload file:///dev/stdin /tmp/output.json
+	@echo "$(GREEN)Response:$(NC)"
+	docker-compose exec localstack cat /tmp/output.json | jq .
+
+invoke-whisper-lambda: ## Manually invoke the whisper Lambda in LocalStack
+	@echo "$(BLUE)Invoking whisper-lambda...$(NC)"
+	@echo '{"s3_bucket":"podcast-audio","s3_key":"test/chunk.mp3"}' | \
+	docker-compose exec -T localstack awslocal lambda invoke --function-name whisper-lambda --payload file:///dev/stdin /tmp/output.json
+	@echo "$(GREEN)Response:$(NC)"
+	docker-compose exec localstack cat /tmp/output.json | jq .
+
+invoke-merge-lambda: ## Manually invoke the merge transcript Lambda in LocalStack
+	@echo "$(BLUE)Invoking merge-transcript Lambda...$(NC)"
+	@echo '{"episode_id":"test123","chunks":[{"index":0,"s3_key":"test/chunk0.txt"}]}' | \
+	docker-compose exec -T localstack awslocal lambda invoke --function-name merge-transcript --payload file:///dev/stdin /tmp/output.json
+	@echo "$(GREEN)Response:$(NC)"
+	docker-compose exec localstack cat /tmp/output.json | jq .

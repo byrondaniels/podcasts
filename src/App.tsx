@@ -1,17 +1,11 @@
-import { useState } from 'react';
-import { PodcastSubscription } from './components/PodcastSubscription';
-import { EpisodeTranscripts } from './components/EpisodeTranscripts';
-import { BulkTranscriber } from './components/BulkTranscriber';
+import { Routes, Route, NavLink, Navigate } from 'react-router-dom';
+import { SubscriptionsPage, TranscriptsPage, BulkTranscribePage } from './pages';
 import { Icon } from './components/shared';
 import './App.css';
-
-type Tab = 'subscriptions' | 'transcripts' | 'bulk-transcribe';
 
 const isDevelopment = import.meta.env.DEV;
 
 function App() {
-  const [activeTab, setActiveTab] = useState<Tab>('subscriptions');
-
   return (
     <div className="app">
       <nav className="app-nav">
@@ -21,38 +15,43 @@ function App() {
             <span className="nav-title">Podcast Manager</span>
           </div>
           <div className="nav-tabs">
-            <button
-              onClick={() => setActiveTab('subscriptions')}
-              className={`nav-tab ${activeTab === 'subscriptions' ? 'active' : ''}`}
+            <NavLink
+              to="/subscriptions"
+              className={({ isActive }) => `nav-tab ${isActive ? 'active' : ''}`}
             >
               <Icon name="podcast" size={20} />
               Subscriptions
-            </button>
-            <button
-              onClick={() => setActiveTab('transcripts')}
-              className={`nav-tab ${activeTab === 'transcripts' ? 'active' : ''}`}
+            </NavLink>
+            <NavLink
+              to="/transcripts"
+              className={({ isActive }) => `nav-tab ${isActive ? 'active' : ''}`}
             >
               <Icon name="document" size={20} />
               Transcripts
-            </button>
+            </NavLink>
             {isDevelopment && (
-              <button
-                onClick={() => setActiveTab('bulk-transcribe')}
-                className={`nav-tab ${activeTab === 'bulk-transcribe' ? 'active' : ''}`}
+              <NavLink
+                to="/bulk-transcribe"
+                className={({ isActive }) => `nav-tab ${isActive ? 'active' : ''}`}
               >
                 <Icon name="microphone" size={20} />
                 Bulk Transcribe
                 <span className="dev-badge">DEV</span>
-              </button>
+              </NavLink>
             )}
           </div>
         </div>
       </nav>
 
       <main className="app-content">
-        {activeTab === 'subscriptions' && <PodcastSubscription />}
-        {activeTab === 'transcripts' && <EpisodeTranscripts />}
-        {activeTab === 'bulk-transcribe' && isDevelopment && <BulkTranscriber />}
+        <Routes>
+          <Route path="/" element={<Navigate to="/subscriptions" replace />} />
+          <Route path="/subscriptions" element={<SubscriptionsPage />} />
+          <Route path="/transcripts" element={<TranscriptsPage />} />
+          {isDevelopment && (
+            <Route path="/bulk-transcribe" element={<BulkTranscribePage />} />
+          )}
+        </Routes>
       </main>
     </div>
   );
