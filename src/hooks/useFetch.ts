@@ -40,6 +40,7 @@ export const useFetch = <T>({
     if (immediate) {
       execute();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [...dependencies, execute, immediate]);
 
   return { data, isLoading, error, refetch: execute };

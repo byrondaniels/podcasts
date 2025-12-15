@@ -3,7 +3,6 @@ import type {
   SubscribeRequest,
   SubscribeResponse,
   GetPodcastsResponse,
-  ApiError,
 } from '../types/podcast';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';

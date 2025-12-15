@@ -47,6 +47,7 @@ class PodcastResponse(BaseModel):
     author: Optional[str] = Field(None, description="Podcast author")
     subscribed_at: datetime = Field(..., description="Subscription timestamp")
     active: bool = Field(True, description="Subscription status")
+    episode_count: Optional[int] = Field(None, description="Total number of episodes in RSS feed")
 
     class Config:
         json_schema_extra = {

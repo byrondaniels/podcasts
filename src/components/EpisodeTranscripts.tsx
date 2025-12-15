@@ -1,27 +1,29 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { episodeService } from '../services/episodeService';
+import { podcastService } from '../services/podcastService';
 import { formatDate, formatDuration } from '../utils';
 import { usePagination } from '../hooks';
-import { Button, Spinner, EmptyState, StatusBadge, Icon, Pagination } from './shared';
+import { Button, EmptyState, StatusBadge, Icon, Pagination } from './shared';
 import { TranscriptModal } from './TranscriptModal';
-import type { Episode, TranscriptStatus, EpisodeFilter } from '../types/episode';
+import type { Episode, TranscriptStatus } from '../types/episode';
+import type { Podcast } from '../types/podcast';
 import './EpisodeTranscripts.css';
 
 const EPISODES_PER_PAGE = 20;
 
-const FILTERS: EpisodeFilter[] = [
-  { label: 'All', value: 'all' },
-  { label: 'Completed', value: 'completed' },
-  { label: 'Processing', value: 'processing' },
-];
-
 export const EpisodeTranscripts = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const podcastIdFromUrl = searchParams.get('podcast');
+
   const [episodes, setEpisodes] = useState<Episode[]>([]);
+  const [podcasts, setPodcasts] = useState<Podcast[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
-  const [activeFilter, setActiveFilter] = useState<TranscriptStatus | 'all'>('all');
+  const [statusFilter, setStatusFilter] = useState<TranscriptStatus | 'all'>('all');
+  const [podcastFilter, setPodcastFilter] = useState<string>(podcastIdFromUrl || 'all');
   const [selectedEpisode, setSelectedEpisode] = useState<Episode | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -31,34 +33,74 @@ export const EpisodeTranscripts = () => {
     initialPage: 1,
   });
 
+  const fetchPodcasts = useCallback(async () => {
+    try {
+      const podcastList = await podcastService.getPodcasts();
+      setPodcasts(podcastList);
+    } catch (err) {
+      console.error('Failed to load podcasts:', err);
+    }
+  }, []);
+
   const fetchEpisodes = useCallback(async () => {
     setIsLoading(true);
     setError(null);
 
     try {
       const response = await episodeService.getEpisodes({
-        status: activeFilter,
+        status: statusFilter,
         page: pagination.currentPage,
         limit: EPISODES_PER_PAGE,
       });
 
-      setEpisodes(response.episodes);
-      setTotal(response.total);
-      setTotalPages(response.totalPages);
+      let filteredEpisodes = response.episodes;
+
+      if (podcastFilter !== 'all') {
+        filteredEpisodes = filteredEpisodes.filter(
+          (episode) => episode.podcast_id === podcastFilter
+        );
+      }
+
+      setEpisodes(filteredEpisodes);
+      setTotal(filteredEpisodes.length);
+      setTotalPages(Math.ceil(filteredEpisodes.length / EPISODES_PER_PAGE));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load episodes');
     } finally {
       setIsLoading(false);
     }
-  }, [activeFilter, pagination.currentPage]);
+  }, [statusFilter, podcastFilter, pagination.currentPage]);
+
+  useEffect(() => {
+    fetchPodcasts();
+  }, [fetchPodcasts]);
 
   useEffect(() => {
     fetchEpisodes();
   }, [fetchEpisodes]);
 
-  const handleFilterChange = (filter: TranscriptStatus | 'all') => {
-    setActiveFilter(filter);
+  useEffect(() => {
+    if (podcastIdFromUrl) {
+      setPodcastFilter(podcastIdFromUrl);
+    }
+  }, [podcastIdFromUrl]);
+
+  const handleStatusFilterChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setStatusFilter(e.target.value as TranscriptStatus | 'all');
     pagination.goToPage(1);
+  };
+
+  const handlePodcastFilterChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newPodcastFilter = e.target.value;
+    setPodcastFilter(newPodcastFilter);
+    pagination.goToPage(1);
+
+    if (newPodcastFilter === 'all') {
+      searchParams.delete('podcast');
+    } else {
+      searchParams.set('podcast', newPodcastFilter);
+    }
+    setSearchParams(searchParams);
   };
 
   const handleViewTranscript = (episode: Episode) => {
@@ -71,47 +113,20 @@ export const EpisodeTranscripts = () => {
     setTimeout(() => setSelectedEpisode(null), 300);
   };
 
-  const renderSkeletonCards = () => {
-    return Array.from({ length: 6 }).map((_, index) => (
-      <div key={index} className="episode-card skeleton">
-        <div className="skeleton-line skeleton-title"></div>
-        <div className="skeleton-line skeleton-subtitle"></div>
-        <div className="skeleton-line skeleton-meta"></div>
-        <div className="skeleton-line skeleton-button"></div>
+  const renderSkeletonRows = () => {
+    return Array.from({ length: 10 }).map((_, index) => (
+      <div key={index} className="episode-row skeleton">
+        <div className="episode-row-main">
+          <div className="skeleton-line skeleton-title"></div>
+          <div className="skeleton-line skeleton-subtitle"></div>
+          <div className="skeleton-line skeleton-meta"></div>
+        </div>
+        <div className="episode-row-actions">
+          <div className="skeleton-line skeleton-badge"></div>
+          <div className="skeleton-line skeleton-button"></div>
+        </div>
       </div>
     ));
-  };
-
-  const renderEpisodeActions = (episode: Episode) => {
-    switch (episode.transcript_status) {
-      case 'completed':
-        return (
-          <Button
-            onClick={() => handleViewTranscript(episode)}
-            variant="primary"
-            leftIcon={<Icon name="eye" size={20} />}
-            className="view-transcript-button"
-          >
-            View Transcript
-          </Button>
-        );
-      case 'processing':
-        return (
-          <div className="processing-indicator">
-            <Spinner size="small" />
-            <span>Transcript processing...</span>
-          </div>
-        );
-      case 'failed':
-        return (
-          <div className="failed-indicator">
-            <Icon name="error" size={16} />
-            <span>Transcript failed to process</span>
-          </div>
-        );
-      default:
-        return null;
-    }
   };
 
   return (
@@ -122,20 +137,47 @@ export const EpisodeTranscripts = () => {
       </div>
 
       <div className="filters-container">
-        <div className="filters">
-          {FILTERS.map((filter) => (
-            <button
-              key={filter.value}
-              onClick={() => handleFilterChange(filter.value)}
-              className={`filter-button ${activeFilter === filter.value ? 'active' : ''}`}
-            >
-              {filter.label}
-              {!isLoading && activeFilter === filter.value && (
-                <span className="filter-count">({total})</span>
-              )}
-            </button>
-          ))}
+        <div className="filter-group">
+          <label htmlFor="status-filter" className="filter-label">
+            Status
+          </label>
+          <select
+            id="status-filter"
+            value={statusFilter}
+            onChange={handleStatusFilterChange}
+            className="filter-select"
+          >
+            <option value="all">All Statuses</option>
+            <option value="completed">Completed</option>
+            <option value="processing">Processing</option>
+            <option value="failed">Failed</option>
+          </select>
         </div>
+
+        <div className="filter-group">
+          <label htmlFor="podcast-filter" className="filter-label">
+            Podcast
+          </label>
+          <select
+            id="podcast-filter"
+            value={podcastFilter}
+            onChange={handlePodcastFilterChange}
+            className="filter-select"
+          >
+            <option value="all">All Podcasts</option>
+            {podcasts.map((podcast) => (
+              <option key={podcast.podcast_id} value={podcast.podcast_id}>
+                {podcast.title}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {!isLoading && (
+          <div className="results-count">
+            {total} {total === 1 ? 'episode' : 'episodes'}
+          </div>
+        )}
       </div>
 
       {error && (
@@ -151,41 +193,50 @@ export const EpisodeTranscripts = () => {
       {!error && (
         <>
           {isLoading ? (
-            <div className="episodes-grid">{renderSkeletonCards()}</div>
+            <div className="episodes-list">{renderSkeletonRows()}</div>
           ) : episodes.length === 0 ? (
             <EmptyState
               icon={<Icon name="podcast" size={80} />}
               title="No episodes found"
               description={
-                activeFilter === 'all'
+                statusFilter === 'all' && podcastFilter === 'all'
                   ? 'Subscribe to podcasts to see their episodes here'
-                  : `No ${activeFilter} episodes at the moment`
+                  : 'No episodes match the selected filters'
               }
             />
           ) : (
             <>
-              <div className="episodes-grid">
+              <div className="episodes-list">
                 {episodes.map((episode) => (
-                  <div key={episode.episode_id} className="episode-card">
-                    <div className="episode-header">
+                  <div key={episode.episode_id} className="episode-row">
+                    <div className="episode-row-main">
                       <h3 className="episode-title">{episode.episode_title}</h3>
+                      <p className="podcast-name">{episode.podcast_title}</p>
+                      <div className="episode-meta">
+                        <span className="episode-date">
+                          <Icon name="calendar" size={16} />
+                          {formatDate(episode.published_date)}
+                        </span>
+                        <span className="episode-duration">
+                          <Icon name="clock" size={16} />
+                          {formatDuration(episode.duration_minutes)}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="episode-row-actions">
                       <StatusBadge status={episode.transcript_status} />
+                      {episode.transcript_status === 'completed' && (
+                        <Button
+                          onClick={() => handleViewTranscript(episode)}
+                          variant="primary"
+                          leftIcon={<Icon name="eye" size={20} />}
+                          className="view-transcript-button"
+                        >
+                          View
+                        </Button>
+                      )}
                     </div>
-
-                    <p className="podcast-name">{episode.podcast_title}</p>
-
-                    <div className="episode-meta">
-                      <span className="episode-date">
-                        <Icon name="calendar" size={16} />
-                        {formatDate(episode.published_date)}
-                      </span>
-                      <span className="episode-duration">
-                        <Icon name="clock" size={16} />
-                        {formatDuration(episode.duration_minutes)}
-                      </span>
-                    </div>
-
-                    {renderEpisodeActions(episode)}
                   </div>
                 ))}
               </div>

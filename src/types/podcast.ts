@@ -4,6 +4,7 @@ export interface Podcast {
   description: string;
   image_url: string;
   rss_url: string;
+  episode_count?: number;
 }
 
 export interface SubscribeRequest {
@@ -14,6 +15,7 @@ export interface SubscribeResponse {
   podcast_id: string;
   title: string;
   status: 'subscribed';
+  episode_count?: number;
 }
 
 export interface GetPodcastsResponse {
