@@ -1,0 +1,101 @@
+# Shared Python Lambda base image
+# This Dockerfile is used to build all Python Lambda functions
+FROM public.ecr.aws/lambda/python:3.11 AS base
+
+# Install common system dependencies
+RUN dnf install -y \
+    zip \
+    && dnf clean all \
+    && rm -rf /var/cache/dnf
+
+# Create layer directory structure
+RUN mkdir -p /opt/python
+
+#------------------------------------------------------------------------------
+# Stage: python-deps - Build Python dependencies layer
+#------------------------------------------------------------------------------
+FROM base AS python-deps-builder
+
+# Copy shared requirements
+COPY layers/python-deps/requirements.txt /tmp/requirements.txt
+
+# Install Python dependencies to layer location
+RUN pip install --no-cache-dir -r /tmp/requirements.txt -t /opt/python
+
+#------------------------------------------------------------------------------
+# Stage: ffmpeg - Build ffmpeg layer
+#------------------------------------------------------------------------------
+FROM base AS ffmpeg-builder
+
+# Install download tools
+RUN dnf install -y wget tar xz && dnf clean all
+
+# Download and extract ffmpeg static binary
+WORKDIR /tmp
+RUN wget -q https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz \
+    && tar xf ffmpeg-release-amd64-static.tar.xz \
+    && mkdir -p /opt/bin \
+    && mv ffmpeg-*-amd64-static/ffmpeg /opt/bin/ \
+    && mv ffmpeg-*-amd64-static/ffprobe /opt/bin/ \
+    && chmod +x /opt/bin/ffmpeg /opt/bin/ffprobe \
+    && rm -rf ffmpeg-*
+
+#------------------------------------------------------------------------------
+# Stage: chunking-lambda - Audio chunking Lambda function
+#------------------------------------------------------------------------------
+FROM base AS chunking-lambda
+
+# Copy ffmpeg from builder
+COPY --from=ffmpeg-builder /opt/bin /opt/bin
+
+# Copy Python dependencies layer
+COPY --from=python-deps-builder /opt/python /opt/python
+
+# Add layer paths to Python path
+ENV PYTHONPATH=/opt/python:${PYTHONPATH}
+ENV PATH=/opt/bin:${PATH}
+
+# Copy Lambda function code
+COPY chunking-lambda/lambda_handler.py ${LAMBDA_TASK_ROOT}/
+
+# Install chunking-specific dependencies (pydub)
+COPY chunking-lambda/requirements.txt /tmp/chunking-requirements.txt
+RUN pip install --no-cache-dir -r /tmp/chunking-requirements.txt -t ${LAMBDA_TASK_ROOT}/ \
+    && rm /tmp/chunking-requirements.txt
+
+CMD ["lambda_handler.lambda_handler"]
+
+#------------------------------------------------------------------------------
+# Stage: whisper-lambda - Whisper transcription Lambda function
+#------------------------------------------------------------------------------
+FROM base AS whisper-lambda
+
+# Copy Python dependencies layer
+COPY --from=python-deps-builder /opt/python /opt/python
+
+# Add layer path to Python path
+ENV PYTHONPATH=/opt/python:${PYTHONPATH}
+
+# Copy Lambda function code
+COPY whisper-lambda/lambda/handler.py ${LAMBDA_TASK_ROOT}/
+COPY whisper-lambda/lambda/__init__.py ${LAMBDA_TASK_ROOT}/
+
+# Install whisper-specific dependencies (openai)
+COPY whisper-lambda/lambda/requirements.txt /tmp/whisper-requirements.txt
+RUN pip install --no-cache-dir -r /tmp/whisper-requirements.txt -t ${LAMBDA_TASK_ROOT}/ \
+    && rm /tmp/whisper-requirements.txt
+
+CMD ["handler.lambda_handler"]
+
+#------------------------------------------------------------------------------
+# Stage: package-builder - Creates deployment zips for LocalStack/Terraform
+#------------------------------------------------------------------------------
+FROM base AS package-builder
+
+# Install zip
+RUN dnf install -y zip wget tar xz && dnf clean all
+
+WORKDIR /build
+
+# This stage is used to create zip packages
+# It's invoked with different build args to create different packages

@@ -59,14 +59,15 @@ module "step_functions" {
   merge_transcripts_arn = module.lambda_merge_transcripts.lambda_arn
 }
 
-# Lambda: RSS Poller (Go - improved performance with concurrent processing)
+# Lambda: RSS Poller (Go)
 module "lambda_rss_poller" {
-  source = "./modules/lambda-go"
+  source = "./modules/lambda-unified"
 
   function_name   = "rss-feed-poller"
+  runtime         = "provided.al2023"
   zip_file_path   = "../poll-lambda-go/poll-lambda-go.zip"
   timeout         = 300
-  memory_size     = 256  # Reduced from 512 - Go uses less memory
+  memory_size     = 256
   environment     = var.environment
 
   environment_variables = {
@@ -101,18 +102,18 @@ module "lambda_rss_poller" {
   schedule_expression     = "rate(30 minutes)"
 }
 
-# Lambda: Audio Chunker
+# Lambda: Audio Chunker (Python with ffmpeg)
 module "lambda_audio_chunker" {
-  source = "./modules/lambda"
+  source = "./modules/lambda-unified"
 
-  function_name   = "podcast-audio-chunking"
-  handler         = "handler.lambda_handler"
-  runtime         = "python3.11"
-  timeout         = 600
-  memory_size     = 3008
+  function_name          = "podcast-audio-chunking"
+  handler                = "lambda_handler.lambda_handler"
+  runtime                = "python3.11"
+  zip_file_path          = "../chunking-lambda/chunking-lambda.zip"
+  timeout                = 600
+  memory_size            = 3008
   ephemeral_storage_size = 10240
-  source_dir      = "../chunking-lambda"
-  environment     = var.environment
+  environment            = var.environment
 
   environment_variables = {
     MONGODB_URI_PARAM  = module.ssm_parameters.mongodb_uri_param_name
@@ -149,16 +150,16 @@ module "lambda_audio_chunker" {
 
 # Lambda: Transcribe Chunk (Whisper)
 module "lambda_transcribe_chunk" {
-  source = "./modules/lambda"
+  source = "./modules/lambda-unified"
 
-  function_name   = "whisper-audio-transcription"
-  handler         = "handler.lambda_handler"
-  runtime         = "python3.11"
-  timeout         = 300
-  memory_size     = 512
+  function_name          = "whisper-audio-transcription"
+  handler                = "handler.lambda_handler"
+  runtime                = "python3.11"
+  zip_file_path          = "../whisper-lambda/whisper-lambda.zip"
+  timeout                = 300
+  memory_size            = 512
   ephemeral_storage_size = 1024
-  source_dir      = "../whisper-lambda/lambda"
-  environment     = var.environment
+  environment            = var.environment
 
   reserved_concurrent_executions = 10
 
@@ -194,14 +195,15 @@ module "lambda_transcribe_chunk" {
   ]
 }
 
-# Lambda: Merge Transcripts (Go - improved performance with efficient text processing)
+# Lambda: Merge Transcripts (Go)
 module "lambda_merge_transcripts" {
-  source = "./modules/lambda-go"
+  source = "./modules/lambda-unified"
 
   function_name   = "merge-transcript-chunks"
+  runtime         = "provided.al2023"
   zip_file_path   = "../merge-transcript-lambda-go/merge-transcript-lambda-go.zip"
   timeout         = 120
-  memory_size     = 256  # Reduced from 512 - Go uses less memory
+  memory_size     = 256
   environment     = var.environment
 
   reserved_concurrent_executions = 5

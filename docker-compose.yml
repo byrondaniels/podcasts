@@ -62,38 +62,16 @@ services:
       mongodb:
         condition: service_healthy
 
-  # Go Lambda Builder - builds Lambda functions without requiring Go locally
-  lambda-builder-poll:
-    image: golang:1.21-alpine
-    container_name: podcast-lambda-builder-poll
-    working_dir: /build
+  # Unified Lambda Builder - builds all Lambda functions using Docker
+  # Usage: docker-compose run --rm lambda-builder [all|go|python|poll|merge|chunking|whisper]
+  lambda-builder:
+    image: docker:24-cli
+    container_name: podcast-lambda-builder
+    working_dir: /workspace
     volumes:
-      - ./poll-lambda-go:/build
-    command: sh -c "apk add --no-cache git && chmod +x /build/build-docker.sh && /build/build-docker.sh"
-    networks:
-      - podcast-network
-
-  lambda-builder-merge:
-    image: golang:1.21-alpine
-    container_name: podcast-lambda-builder-merge
-    working_dir: /build
-    volumes:
-      - ./merge-transcript-lambda-go:/build
-    command: sh -c "apk add --no-cache git && chmod +x /build/build-docker.sh && /build/build-docker.sh"
-    networks:
-      - podcast-network
-
-  # Python Lambda Builder - packages Python Lambda functions
-  lambda-builder-python:
-    image: python:3.11-slim
-    container_name: podcast-lambda-builder-python
-    working_dir: /build
-    volumes:
-      - ./chunking-lambda:/build/chunking-lambda
-      - ./whisper-lambda:/build/whisper-lambda
-      - ./lambda-packages:/build/packages
-    entrypoint: ["/bin/bash"]
-    command: -c "chmod +x /build/chunking-lambda/build-docker.sh && /build/chunking-lambda/build-docker.sh && chmod +x /build/whisper-lambda/build-docker.sh && /build/whisper-lambda/build-docker.sh"
+      - /var/run/docker.sock:/var/run/docker.sock
+      - .:/workspace
+    command: sh -c "/workspace/lambdas/build.sh all"
     networks:
       - podcast-network
 
