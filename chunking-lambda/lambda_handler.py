@@ -9,6 +9,10 @@ from pydub import AudioSegment
 from pymongo import MongoClient
 from botocore.exceptions import ClientError
 
+# Add bin directory to PATH for ffmpeg binaries
+if os.path.exists('./bin'):
+    os.environ['PATH'] = f"./bin:{os.environ.get('PATH', '')}"
+
 # Configure logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)

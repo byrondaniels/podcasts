@@ -33,14 +33,17 @@ services:
     environment:
       - SERVICES=s3,lambda,stepfunctions,events
       - DEBUG=1
-      - DATA_DIR=/tmp/localstack/data
+      - DATA_DIR=/var/lib/localstack
       - DOCKER_HOST=unix:///var/run/docker.sock
       - AWS_DEFAULT_REGION=us-east-1
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test
       - LAMBDA_RUNTIME_ENVIRONMENT_TIMEOUT=900
+      - PERSISTENCE=1
+      - WHISPER_SERVICE_URL=http://whisper:9000
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
     volumes:
-      - localstack-data:/tmp/localstack
+      - localstack-data:/var/lib/localstack
       - /var/run/docker.sock:/var/run/docker.sock
       - ./localstack-init:/etc/localstack/init/ready.d:ro
       - ./poll-lambda-go/bootstrap:/tmp/lambda/poll-lambda/bootstrap:ro
