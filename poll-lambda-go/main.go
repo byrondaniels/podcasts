@@ -61,6 +61,11 @@ type PodcastResult struct {
 	Errors       []string `json:"errors"`
 }
 
+// Request is the Lambda function request
+type Request struct {
+	PodcastID string `json:"podcast_id,omitempty"`
+}
+
 // Response is the Lambda function response
 type Response struct {
 	StatusCode     int             `json:"statusCode"`
@@ -307,6 +312,14 @@ func HandleRequest(ctx context.Context, event json.RawMessage) (Response, error)
 	log.Println("Starting RSS feed polling")
 	log.Printf("Event: %s", string(event))
 
+	// Parse request to check for specific podcast_id
+	var request Request
+	if len(event) > 0 && string(event) != "{}" && string(event) != "null" {
+		if err := json.Unmarshal(event, &request); err != nil {
+			log.Printf("Warning: Failed to parse event as Request: %v", err)
+		}
+	}
+
 	response := Response{
 		StatusCode:     200,
 		Message:        "RSS polling completed",
@@ -321,8 +334,17 @@ func HandleRequest(ctx context.Context, event json.RawMessage) (Response, error)
 	db := mongoClient.Database("")  // Uses default database from connection string
 	podcastsCollection := db.Collection("podcasts")
 
-	// Query for active podcasts
-	cursor, err := podcastsCollection.Find(ctx, bson.M{"active": true})
+	// Build query - filter by podcast_id if provided, otherwise get all active podcasts
+	query := bson.M{"active": true}
+	if request.PodcastID != "" {
+		query["podcast_id"] = request.PodcastID
+		log.Printf("Polling specific podcast: %s", request.PodcastID)
+	} else {
+		log.Println("Polling all active podcasts")
+	}
+
+	// Query for podcasts
+	cursor, err := podcastsCollection.Find(ctx, query)
 	if err != nil {
 		response.StatusCode = 500
 		response.Message = "Failed to query podcasts"
@@ -343,6 +365,12 @@ func HandleRequest(ctx context.Context, event json.RawMessage) (Response, error)
 	log.Printf("Found %d active podcasts", len(podcasts))
 
 	if len(podcasts) == 0 {
+		if request.PodcastID != "" {
+			response.StatusCode = 404
+			response.Message = fmt.Sprintf("Podcast with ID '%s' not found or not active", request.PodcastID)
+			response.Errors = append(response.Errors, response.Message)
+			return response, fmt.Errorf(response.Message)
+		}
 		response.Message = "No active podcasts to process"
 		return response, nil
 	}
@@ -378,8 +406,13 @@ func HandleRequest(ctx context.Context, event json.RawMessage) (Response, error)
 	wg.Wait()
 	response.PodcastResults = results
 
-	log.Printf("RSS polling complete. Processed %d podcasts, found %d new episodes",
-		response.Processed, response.TotalEpisodes)
+	if request.PodcastID != "" {
+		response.Message = fmt.Sprintf("Polling completed for podcast %s", request.PodcastID)
+		log.Printf("RSS polling complete for podcast %s. Found %d new episodes", request.PodcastID, response.TotalEpisodes)
+	} else {
+		log.Printf("RSS polling complete. Processed %d podcasts, found %d new episodes",
+			response.Processed, response.TotalEpisodes)
+	}
 
 	return response, nil
 }
