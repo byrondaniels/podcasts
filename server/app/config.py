@@ -14,7 +14,11 @@ class Settings(BaseSettings):
     aws_access_key_id: str = ""
     aws_secret_access_key: str = ""
     aws_region: str = "us-east-1"
+    aws_endpoint_url: str = ""  # For LocalStack in dev
     s3_bucket_name: str = "podcast-transcripts"
+
+    # AWS Step Functions Configuration
+    step_function_arn: str = ""
 
     # Transcription Configuration
     openai_api_key: str = ""

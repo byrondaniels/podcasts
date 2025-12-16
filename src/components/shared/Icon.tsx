@@ -14,7 +14,8 @@ export type IconName =
   | 'info'
   | 'microphone'
   | 'inbox'
-  | 'play';
+  | 'play'
+  | 'download';
 
 interface IconProps {
   name: IconName;
@@ -132,6 +133,14 @@ const icons: Record<IconName, JSX.Element> = {
       strokeLinejoin="round"
       strokeWidth={2}
       d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+    />
+  ),
+  download: (
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
     />
   ),
 };
