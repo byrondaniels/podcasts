@@ -26,6 +26,8 @@ export const EpisodeTranscripts = () => {
   const [podcastFilter, setPodcastFilter] = useState<string>(podcastIdFromUrl || 'all');
   const [selectedEpisode, setSelectedEpisode] = useState<Episode | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isPolling, setIsPolling] = useState(false);
+  const [pollMessage, setPollMessage] = useState<string | null>(null);
 
   const pagination = usePagination({
     totalItems: total,
@@ -113,6 +115,37 @@ export const EpisodeTranscripts = () => {
     setTimeout(() => setSelectedEpisode(null), 300);
   };
 
+  const handlePollPodcast = async () => {
+    if (podcastFilter === 'all') return;
+
+    setIsPolling(true);
+    setPollMessage(null);
+    setError(null);
+
+    try {
+      const result = await podcastService.pollPodcast(podcastFilter);
+      setPollMessage(result.message);
+
+      // Refresh episodes list after polling
+      if (result.new_episodes > 0) {
+        setTimeout(() => {
+          fetchEpisodes();
+        }, 1000);
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to check for new episodes';
+      setPollMessage(errorMessage);
+      setError(errorMessage);
+    } finally {
+      setIsPolling(false);
+      // Clear message after 5 seconds
+      setTimeout(() => {
+        setPollMessage(null);
+        setError(null);
+      }, 5000);
+    }
+  };
+
   const renderSkeletonRows = () => {
     return Array.from({ length: 10 }).map((_, index) => (
       <div key={index} className="episode-row skeleton">
@@ -178,7 +211,26 @@ export const EpisodeTranscripts = () => {
             {total} {total === 1 ? 'episode' : 'episodes'}
           </div>
         )}
+
+        {podcastFilter !== 'all' && (
+          <Button
+            onClick={handlePollPodcast}
+            disabled={isPolling}
+            variant="secondary"
+            leftIcon={<Icon name="refresh" size={20} />}
+            className="poll-button"
+          >
+            {isPolling ? 'Checking...' : 'Check for New Episodes'}
+          </Button>
+        )}
       </div>
+
+      {pollMessage && (
+        <div className={`poll-message ${error ? 'poll-error' : 'poll-success'}`}>
+          <Icon name={error ? 'error' : 'check'} size={20} />
+          <span>{pollMessage}</span>
+        </div>
+      )}
 
       {error && (
         <div className="episodes-error">
