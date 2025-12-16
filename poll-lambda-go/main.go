@@ -41,16 +41,16 @@ type Podcast struct {
 
 // Episode represents an episode document
 type Episode struct {
-	ID            string             `bson:"_id"`
-	EpisodeID     string             `bson:"episode_id"`
-	PodcastID     string             `bson:"podcast_id"`
-	Title         string             `bson:"title"`
-	Description   string             `bson:"description"`
-	AudioURL      string             `bson:"audio_url"`
-	PublishedDate *time.Time         `bson:"published_date,omitempty"`
-	Status        string             `bson:"status"`
-	CreatedAt     time.Time          `bson:"created_at"`
-	UpdatedAt     time.Time          `bson:"updated_at"`
+	ID                string             `bson:"_id"`
+	EpisodeID         string             `bson:"episode_id"`
+	PodcastID         string             `bson:"podcast_id"`
+	Title             string             `bson:"title"`
+	Description       string             `bson:"description"`
+	AudioURL          string             `bson:"audio_url"`
+	PublishedDate     *time.Time         `bson:"published_date,omitempty"`
+	TranscriptStatus  string             `bson:"transcript_status"`
+	CreatedAt         time.Time          `bson:"created_at"`
+	UpdatedAt         time.Time          `bson:"updated_at"`
 }
 
 // PodcastResult holds processing stats for a single podcast
@@ -114,9 +114,16 @@ func initMongoClient() {
 }
 
 func initSFNClient() {
-	sess := session.Must(session.NewSession(&aws.Config{
+	awsConfig := &aws.Config{
 		Region: aws.String(os.Getenv("AWS_REGION")),
-	}))
+	}
+
+	// Use LocalStack endpoint if running locally
+	if endpoint := os.Getenv("AWS_ENDPOINT_URL"); endpoint != "" {
+		awsConfig.Endpoint = aws.String(endpoint)
+	}
+
+	sess := session.Must(session.NewSession(awsConfig))
 	sfnClient = sfn.New(sess)
 }
 
@@ -224,16 +231,16 @@ func processPodcast(ctx context.Context, podcast Podcast, db *mongo.Database) Po
 
 		// Create episode document
 		episode := Episode{
-			ID:            episodeID,
-			EpisodeID:     episodeID,
-			PodcastID:     podcast.ID.Hex(),
-			Title:         item.Title,
-			Description:   item.Description,
-			AudioURL:      audioURL,
-			PublishedDate: publishedDate,
-			Status:        "pending",
-			CreatedAt:     time.Now().UTC(),
-			UpdatedAt:     time.Now().UTC(),
+			ID:               episodeID,
+			EpisodeID:        episodeID,
+			PodcastID:        podcast.ID.Hex(),
+			Title:            item.Title,
+			Description:      item.Description,
+			AudioURL:         audioURL,
+			PublishedDate:    publishedDate,
+			TranscriptStatus: "pending",
+			CreatedAt:        time.Now().UTC(),
+			UpdatedAt:        time.Now().UTC(),
 		}
 
 		// Insert episode into MongoDB
@@ -318,7 +325,7 @@ func HandleRequest(ctx context.Context, event json.RawMessage) (Response, error)
 	}
 
 	// Get database
-	db := mongoClient.Database("")  // Uses default database from connection string
+	db := mongoClient.Database("podcast_db")
 	podcastsCollection := db.Collection("podcasts")
 
 	// Query for active podcasts

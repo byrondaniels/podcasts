@@ -3,8 +3,12 @@ set -e
 
 echo "Building Whisper Lambda..."
 
-# Install zip utility
-apt-get update -qq && apt-get install -y -qq zip > /dev/null 2>&1
+# Install zip utility (use yum for Amazon Linux)
+if command -v yum &> /dev/null; then
+    yum install -y zip > /dev/null 2>&1 || true
+else
+    apt-get update -qq && apt-get install -y -qq zip > /dev/null 2>&1 || true
+fi
 
 # Install dependencies in a temp directory
 mkdir -p package

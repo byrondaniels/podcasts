@@ -3,7 +3,7 @@ import os
 import boto3
 import logging
 import time
-from openai import OpenAI
+import requests
 from botocore.exceptions import ClientError
 
 # Configure logging
@@ -16,7 +16,17 @@ INITIAL_RETRY_DELAY = 1  # seconds
 
 # Initialize clients
 s3_client = boto3.client('s3')
-openai_client = OpenAI(api_key=os.environ['OPENAI_API_KEY'])
+
+# Check which Whisper service to use
+WHISPER_SERVICE_URL = os.environ.get('WHISPER_SERVICE_URL')
+USE_LOCAL_WHISPER = bool(WHISPER_SERVICE_URL)
+
+if USE_LOCAL_WHISPER:
+    logger.info(f"Using local Whisper service at {WHISPER_SERVICE_URL}")
+else:
+    from openai import OpenAI
+    openai_client = OpenAI(api_key=os.environ['OPENAI_API_KEY'])
+    logger.info("Using OpenAI Whisper API")
 
 
 def download_from_s3(bucket, key, local_path):
@@ -43,16 +53,73 @@ def upload_to_s3(bucket, key, local_path):
         raise
 
 
+def transcribe_with_local_whisper(audio_path):
+    """
+    Transcribe audio using local Whisper service.
+
+    Args:
+        audio_path: Path to the audio file
+
+    Returns:
+        Transcript dict compatible with OpenAI format
+    """
+    logger.info(f"Transcribing with local Whisper service: {WHISPER_SERVICE_URL}")
+
+    with open(audio_path, 'rb') as audio_file:
+        files = {'audio_file': audio_file}
+        data = {'task': 'transcribe', 'output': 'json'}
+
+        response = requests.post(
+            f"{WHISPER_SERVICE_URL}/asr",
+            files=files,
+            data=data,
+            timeout=600  # 10 minute timeout for transcription
+        )
+        response.raise_for_status()
+
+    result = response.json()
+    logger.info("Local Whisper transcription successful")
+
+    # Convert to OpenAI-compatible format
+    class TranscriptObject:
+        def __init__(self, text, segments=None):
+            self.text = text
+            self.segments = segments or []
+
+        def model_dump(self):
+            return {'text': self.text, 'segments': [s.__dict__ for s in self.segments]}
+
+    class Segment:
+        def __init__(self, id, start, end, text):
+            self.id = id
+            self.start = start
+            self.end = end
+            self.text = text
+
+    # Parse segments from local Whisper response
+    segments = []
+    if 'segments' in result:
+        for i, seg in enumerate(result['segments']):
+            segments.append(Segment(
+                id=i,
+                start=seg.get('start', 0),
+                end=seg.get('end', 0),
+                text=seg.get('text', '')
+            ))
+
+    return TranscriptObject(text=result.get('text', ''), segments=segments)
+
+
 def transcribe_audio_with_retry(audio_path, max_retries=MAX_RETRIES):
     """
-    Transcribe audio using OpenAI Whisper API with exponential backoff retry logic.
+    Transcribe audio using OpenAI Whisper API or local Whisper service with exponential backoff retry logic.
 
     Args:
         audio_path: Path to the audio file
         max_retries: Maximum number of retry attempts
 
     Returns:
-        Transcript object from OpenAI API
+        Transcript object from OpenAI API or local Whisper service
     """
     retry_delay = INITIAL_RETRY_DELAY
 
@@ -60,13 +127,16 @@ def transcribe_audio_with_retry(audio_path, max_retries=MAX_RETRIES):
         try:
             logger.info(f"Attempting transcription (attempt {attempt + 1}/{max_retries + 1})")
 
-            with open(audio_path, 'rb') as audio_file:
-                transcript = openai_client.audio.transcriptions.create(
-                    model="whisper-1",
-                    file=audio_file,
-                    response_format="verbose_json",
-                    timestamp_granularities=["segment"]
-                )
+            if USE_LOCAL_WHISPER:
+                transcript = transcribe_with_local_whisper(audio_path)
+            else:
+                with open(audio_path, 'rb') as audio_file:
+                    transcript = openai_client.audio.transcriptions.create(
+                        model="whisper-1",
+                        file=audio_file,
+                        response_format="verbose_json",
+                        timestamp_granularities=["segment"]
+                    )
 
             logger.info("Transcription successful")
             return transcript
