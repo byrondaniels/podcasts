@@ -1,0 +1,7 @@
+# Shared Python dependencies for all Python Lambdas
+# These are packaged as a Lambda layer
+
+boto3>=1.34.0
+botocore>=1.34.0
+pymongo>=4.6.0
+requests>=2.31.0

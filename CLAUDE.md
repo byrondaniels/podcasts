@@ -78,14 +78,24 @@ make s3-list-audio      # List files in podcast-audio bucket
 make s3-list-transcripts # List files in podcast-transcripts bucket
 ```
 
-### Go Lambda Development
+### Lambda Development (Unified Build System)
 ```bash
-make build-go-lambdas   # Build all Go Lambdas (poll + merge)
-make build-poll-lambda-go    # Build poll Lambda only
-make build-merge-lambda-go   # Build merge Lambda only
-make test-go-lambdas    # Run tests for Go Lambdas
-make clean-go-lambdas   # Clean build artifacts
-make go-mod-tidy        # Run go mod tidy on all Go modules
+# Build all Lambdas (Go + Python)
+make build-lambdas          # Build all Lambda functions
+
+# Individual Lambda builds
+make build-go-lambdas       # Build all Go Lambdas (poll + merge)
+make build-python-lambdas   # Build all Python Lambdas (chunking + whisper)
+make build-poll-lambda      # Build poll Lambda only
+make build-merge-lambda     # Build merge Lambda only
+make build-chunking-lambda  # Build chunking Lambda only
+make build-whisper-lambda   # Build whisper Lambda only
+
+# Testing and maintenance
+make test-go-lambdas        # Run tests for Go Lambdas
+make clean-lambdas          # Clean all Lambda build artifacts
+make go-mod-tidy            # Run go mod tidy on all Go modules
+make deploy-lambdas         # Build and deploy all Lambdas to LocalStack
 ```
 
 ### Testing and Linting
@@ -195,12 +205,19 @@ podcasts/
 │       ├── services/             # Business logic (RSS parser, S3, Whisper, bulk transcribe)
 │       ├── models/               # Pydantic schemas
 │       └── database/             # MongoDB connection
+├── lambdas/                      # Unified Lambda build system
+│   ├── Dockerfile.go             # Multi-stage Docker build for Go Lambdas
+│   ├── Dockerfile.python         # Multi-stage Docker build for Python Lambdas
+│   ├── build.sh                  # Unified build script
+│   └── layers/                   # Lambda layer definitions
+│       └── python-deps/          # Shared Python dependencies
 ├── poll-lambda-go/               # RSS polling Lambda (Go)
 ├── merge-transcript-lambda-go/   # Transcript merging Lambda (Go)
 ├── chunking-lambda/              # Audio chunking Lambda (Python)
 ├── whisper-lambda/               # Transcription Lambda (Python)
+├── localstack-init/              # LocalStack initialization scripts
 └── terraform/                    # Infrastructure as Code
-    └── modules/                  # Reusable Terraform modules (s3, lambda, step-functions, ssm)
+    └── modules/                  # Terraform modules (s3, lambda-unified, step-functions, ssm)
 ```
 
 ### Working with this Codebase

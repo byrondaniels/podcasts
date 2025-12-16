@@ -181,44 +181,54 @@ prune: ## Remove unused Docker resources
 	docker system prune -f
 	@echo "$(GREEN)✓ Prune complete$(NC)"
 
-# Go Lambda build targets
-build-go-lambdas: build-poll-lambda-go build-merge-lambda-go ## Build all Go Lambda functions
+# =============================================================================
+# Lambda Build Targets (Unified Docker-based builds)
+# =============================================================================
 
-build-poll-lambda-go: ## Build Poll Lambda (Go) using Docker
-	@echo "$(BLUE)Building Poll Lambda (Go) in Docker...$(NC)"
-	docker-compose run --rm lambda-builder-poll
+build-lambdas: ## Build all Lambda functions using unified Docker build
+	@echo "$(BLUE)Building all Lambda functions...$(NC)"
+	./lambdas/build.sh all
+	@echo "$(GREEN)✓ All Lambdas built$(NC)"
+
+build-go-lambdas: ## Build all Go Lambda functions
+	@echo "$(BLUE)Building Go Lambdas...$(NC)"
+	./lambdas/build.sh go
+	@echo "$(GREEN)✓ Go Lambdas built$(NC)"
+
+build-python-lambdas: ## Build all Python Lambda functions
+	@echo "$(BLUE)Building Python Lambdas...$(NC)"
+	./lambdas/build.sh python
+	@echo "$(GREEN)✓ Python Lambdas built$(NC)"
+
+build-poll-lambda: ## Build Poll Lambda (Go)
+	@echo "$(BLUE)Building Poll Lambda...$(NC)"
+	./lambdas/build.sh poll
 	@echo "$(GREEN)✓ Poll Lambda built$(NC)"
 
-build-merge-lambda-go: ## Build Merge Lambda (Go) using Docker
-	@echo "$(BLUE)Building Merge Lambda (Go) in Docker...$(NC)"
-	docker-compose run --rm lambda-builder-merge
+build-merge-lambda: ## Build Merge Lambda (Go)
+	@echo "$(BLUE)Building Merge Lambda...$(NC)"
+	./lambdas/build.sh merge
 	@echo "$(GREEN)✓ Merge Lambda built$(NC)"
 
-build-chunking-lambda: ## Build Chunking Lambda (Python) using Docker
-	@echo "$(BLUE)Building Chunking Lambda (Python) in Docker...$(NC)"
-	docker run --rm -v $(PWD)/chunking-lambda:/build/chunking-lambda -w /build/chunking-lambda python:3.11-slim bash -c "chmod +x build-docker.sh && ./build-docker.sh"
+build-chunking-lambda: ## Build Chunking Lambda (Python)
+	@echo "$(BLUE)Building Chunking Lambda...$(NC)"
+	./lambdas/build.sh chunking
 	@echo "$(GREEN)✓ Chunking Lambda built$(NC)"
 
-build-whisper-lambda: ## Build Whisper Lambda (Python) using Docker
-	@echo "$(BLUE)Building Whisper Lambda (Python) in Docker...$(NC)"
-	docker run --rm -v $(PWD)/whisper-lambda:/build/whisper-lambda -w /build/whisper-lambda python:3.11-slim bash -c "chmod +x build-docker.sh && ./build-docker.sh"
+build-whisper-lambda: ## Build Whisper Lambda (Python)
+	@echo "$(BLUE)Building Whisper Lambda...$(NC)"
+	./lambdas/build.sh whisper
 	@echo "$(GREEN)✓ Whisper Lambda built$(NC)"
 
-build-all-lambdas: build-poll-lambda-go build-merge-lambda-go build-chunking-lambda build-whisper-lambda ## Build all Lambda functions
+build-lambda-layers: ## Build Lambda layers (Python deps, ffmpeg)
+	@echo "$(BLUE)Building Lambda layers...$(NC)"
+	./lambdas/build.sh layers
+	@echo "$(GREEN)✓ Lambda layers built$(NC)"
 
 clean-lambdas: ## Clean all Lambda build artifacts
 	@echo "$(BLUE)Cleaning Lambda artifacts...$(NC)"
-	rm -f poll-lambda-go/bootstrap poll-lambda-go/*.zip
-	rm -f merge-transcript-lambda-go/bootstrap merge-transcript-lambda-go/*.zip
-	rm -f chunking-lambda/*.zip chunking-lambda/package
-	rm -f whisper-lambda/*.zip whisper-lambda/package
+	./lambdas/build.sh clean
 	@echo "$(GREEN)✓ Lambda artifacts cleaned$(NC)"
-
-clean-go-lambdas: ## Clean Go Lambda build artifacts
-	@echo "$(BLUE)Cleaning Go Lambda artifacts...$(NC)"
-	rm -f poll-lambda-go/bootstrap poll-lambda-go/*.zip
-	rm -f merge-transcript-lambda-go/bootstrap merge-transcript-lambda-go/*.zip
-	@echo "$(GREEN)✓ Go Lambda artifacts cleaned$(NC)"
 
 test-go-lambdas: ## Run tests for Go Lambdas
 	@echo "$(BLUE)Testing Go Lambdas...$(NC)"
@@ -234,7 +244,7 @@ go-mod-tidy: ## Run go mod tidy on all Go modules
 	cd merge-transcript-lambda-go && go mod tidy
 	@echo "$(GREEN)✓ Go modules tidied$(NC)"
 
-deploy-lambdas: build-all-lambdas ## Build and deploy all Lambdas to LocalStack
+deploy-lambdas: build-lambdas ## Build and deploy all Lambdas to LocalStack
 	@echo "$(BLUE)Deploying all Lambdas to LocalStack...$(NC)"
 	docker-compose exec localstack /etc/localstack/init/ready.d/init-lambda.sh
 	@echo "$(GREEN)✓ All Lambdas deployed to LocalStack$(NC)"
@@ -270,3 +280,8 @@ invoke-merge-lambda: ## Manually invoke the merge transcript Lambda in LocalStac
 	docker-compose exec -T localstack awslocal lambda invoke --function-name merge-transcript --payload file:///dev/stdin /tmp/output.json
 	@echo "$(GREEN)Response:$(NC)"
 	docker-compose exec localstack cat /tmp/output.json | jq .
+
+# Legacy aliases for backwards compatibility
+build-poll-lambda-go: build-poll-lambda
+build-merge-lambda-go: build-merge-lambda
+build-all-lambdas: build-lambdas
