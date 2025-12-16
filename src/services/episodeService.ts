@@ -83,6 +83,32 @@ class EpisodeService {
       throw new Error('An unexpected error occurred while fetching transcript');
     }
   }
+
+  /**
+   * Trigger transcription for a specific episode
+   */
+  async triggerTranscription(episodeId: string): Promise<void> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/episodes/${episodeId}/transcribe`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({
+          detail: 'Failed to trigger transcription',
+        }));
+        throw new Error(errorData.detail || 'Failed to trigger transcription');
+      }
+    } catch (error) {
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error('An unexpected error occurred while triggering transcription');
+    }
+  }
 }
 
 export const episodeService = new EpisodeService();

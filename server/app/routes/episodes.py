@@ -11,7 +11,7 @@ from app.models import (
     TranscriptResponse,
     TranscriptStatus,
 )
-from app.services import s3_service
+from app.services import s3_service, step_functions_service
 
 # Constants
 DEFAULT_PAGE_LIMIT = 20
@@ -215,6 +215,112 @@ async def get_episode_transcript(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch transcript"
+        )
+
+
+@router.post("/{episode_id}/transcribe")
+async def trigger_episode_transcription(
+    episode_id: str,
+    db: AsyncIOMotorDatabase = Depends(get_database)
+):
+    """
+    Trigger transcription for a specific episode.
+
+    This endpoint triggers the Step Functions state machine to process
+    the episode audio and generate a transcript.
+
+    Args:
+        episode_id: ID of the episode to transcribe
+        db: Database instance
+
+    Returns:
+        Success message with execution details
+
+    Raises:
+        HTTPException: If episode not found or transcription cannot be triggered
+    """
+    try:
+        logger.info(f"Triggering transcription for episode: {episode_id}")
+
+        # Find episode
+        episode = await db.episodes.find_one({"episode_id": episode_id})
+        if not episode:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Episode with ID '{episode_id}' not found"
+            )
+
+        # Check if episode has audio URL
+        audio_url = episode.get("audio_url")
+        if not audio_url:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Episode does not have an audio URL"
+            )
+
+        # Check current transcript status
+        current_status = episode.get("transcript_status", "pending")
+        if current_status == "processing":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Episode is already being transcribed"
+            )
+
+        # Update episode status to processing
+        await db.episodes.update_one(
+            {"episode_id": episode_id},
+            {"$set": {"transcript_status": "processing"}}
+        )
+
+        # Trigger Step Functions execution
+        try:
+            execution_result = await step_functions_service.trigger_transcription(
+                episode_id=episode_id,
+                audio_url=audio_url
+            )
+
+            logger.info(
+                f"Successfully triggered transcription for episode {episode_id}. "
+                f"Execution ARN: {execution_result['execution_arn']}"
+            )
+
+            return {
+                "message": "Transcription started successfully",
+                "episode_id": episode_id,
+                "execution_arn": execution_result["execution_arn"],
+                "status": "processing"
+            }
+
+        except ValueError as e:
+            # Revert status if Step Functions is not configured
+            await db.episodes.update_one(
+                {"episode_id": episode_id},
+                {"$set": {"transcript_status": current_status}}
+            )
+            logger.error(f"Step Functions not configured: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=str(e)
+            )
+        except Exception as e:
+            # Revert status on error
+            await db.episodes.update_one(
+                {"episode_id": episode_id},
+                {"$set": {"transcript_status": "failed"}}
+            )
+            logger.error(f"Failed to trigger Step Functions: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to start transcription: {str(e)}"
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error triggering transcription: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to trigger transcription"
         )
 
 

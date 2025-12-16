@@ -115,6 +115,36 @@ export const EpisodeTranscripts = () => {
     setTimeout(() => setSelectedEpisode(null), 300);
   };
 
+  const handleDownloadTranscript = async (episode: Episode) => {
+    try {
+      // Update episode status to processing optimistically
+      setEpisodes((prevEpisodes) =>
+        prevEpisodes.map((ep) =>
+          ep.episode_id === episode.episode_id
+            ? { ...ep, transcript_status: 'processing' }
+            : ep
+        )
+      );
+
+      await episodeService.triggerTranscription(episode.episode_id);
+
+      // Refresh episodes list to get updated status
+      setTimeout(() => {
+        fetchEpisodes();
+      }, 1000);
+    } catch (err) {
+      console.error('Failed to trigger transcription:', err);
+      // Revert optimistic update on error
+      setEpisodes((prevEpisodes) =>
+        prevEpisodes.map((ep) =>
+          ep.episode_id === episode.episode_id
+            ? { ...ep, transcript_status: episode.transcript_status }
+            : ep
+        )
+      );
+      setError(err instanceof Error ? err.message : 'Failed to trigger transcription');
+          }
+  };
   const handlePollPodcast = async () => {
     if (podcastFilter === 'all') return;
 
@@ -286,6 +316,16 @@ export const EpisodeTranscripts = () => {
                           className="view-transcript-button"
                         >
                           View
+                        </Button>
+                      )}
+                      {(episode.transcript_status === 'pending' || episode.transcript_status === 'failed') && (
+                        <Button
+                          onClick={() => handleDownloadTranscript(episode)}
+                          variant="secondary"
+                          leftIcon={<Icon name="download" size={20} />}
+                          className="download-transcript-button"
+                        >
+                          Download Transcript
                         </Button>
                       )}
                     </div>
