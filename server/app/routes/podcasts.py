@@ -13,7 +13,7 @@ from app.models import (
     PodcastListResponse,
     SuccessResponse,
 )
-from app.services import rss_parser
+from app.services import rss_parser, lambda_service
 
 logger = logging.getLogger(__name__)
 
@@ -213,6 +213,94 @@ async def unsubscribe_from_podcast(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to unsubscribe from podcast"
+        )
+
+
+@router.post("/{podcast_id}/poll", response_model=SuccessResponse)
+async def poll_podcast(
+    podcast_id: str,
+    db: AsyncIOMotorDatabase = Depends(get_database)
+):
+    """
+    Manually trigger polling for new episodes of a specific podcast.
+
+    This endpoint invokes the RSS polling Lambda function with a specific
+    podcast ID to check for new episodes immediately.
+
+    Args:
+        podcast_id: ID of the podcast to poll
+        db: Database instance
+
+    Returns:
+        Success message with polling results
+
+    Raises:
+        HTTPException: If podcast not found or polling fails
+    """
+    try:
+        logger.info(f"Manual poll triggered for podcast: {podcast_id}")
+
+        # Check if podcast exists and is active
+        podcast = await db.podcasts.find_one({"podcast_id": podcast_id})
+        if not podcast:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Podcast with ID '{podcast_id}' not found"
+            )
+
+        if not podcast.get("active", True):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Podcast '{podcast['title']}' is not active"
+            )
+
+        # Invoke the poll Lambda function for this specific podcast
+        try:
+            response = await lambda_service.invoke_poll_lambda(podcast_id=podcast_id)
+
+            # Extract results from Lambda response
+            new_episodes = response.get("total_new_episodes", 0)
+            errors = response.get("errors", [])
+
+            if response.get("statusCode") == 404:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=response.get("message", "Podcast not found")
+                )
+
+            message = f"Polling completed for '{podcast['title']}'. Found {new_episodes} new episode(s)."
+
+            if errors:
+                logger.warning(f"Polling completed with errors: {errors}")
+                message += f" Warnings: {'; '.join(errors[:3])}"  # Show first 3 errors
+
+            logger.info(f"Manual poll completed for {podcast_id}: {new_episodes} new episodes")
+
+            return {
+                "message": message,
+                "data": {
+                    "podcast_id": podcast_id,
+                    "new_episodes": new_episodes,
+                    "errors": errors
+                }
+            }
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to invoke poll Lambda: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to poll podcast: {str(e)}"
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error polling podcast: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to poll podcast"
         )
 
 

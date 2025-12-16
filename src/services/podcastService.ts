@@ -92,6 +92,38 @@ class PodcastService {
       throw new Error('An unexpected error occurred while unsubscribing');
     }
   }
+
+  /**
+   * Trigger manual polling for new episodes of a specific podcast
+   */
+  async pollPodcast(podcastId: string): Promise<{ message: string; new_episodes: number }> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/podcasts/${podcastId}/poll`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({
+          detail: 'Failed to poll podcast for new episodes',
+        }));
+        throw new Error(errorData.detail || 'Failed to poll podcast for new episodes');
+      }
+
+      const data = await response.json();
+      return {
+        message: data.message,
+        new_episodes: data.data?.new_episodes || 0,
+      };
+    } catch (error) {
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error('An unexpected error occurred while polling podcast');
+    }
+  }
 }
 
 export const podcastService = new PodcastService();

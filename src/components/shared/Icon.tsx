@@ -14,7 +14,8 @@ export type IconName =
   | 'info'
   | 'microphone'
   | 'inbox'
-  | 'play';
+  | 'play'
+  | 'refresh';
 
 interface IconProps {
   name: IconName;
@@ -132,6 +133,14 @@ const icons: Record<IconName, JSX.Element> = {
       strokeLinejoin="round"
       strokeWidth={2}
       d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+    />
+  ),
+  refresh: (
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
     />
   ),
 };
