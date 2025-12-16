@@ -112,7 +112,9 @@ services:
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test
       - AWS_REGION=us-east-1
+      - AWS_ENDPOINT_URL=http://localstack:4566
       - S3_BUCKET_NAME=${S3_BUCKET_NAME:-podcast-transcripts}
+      - STEP_FUNCTION_ARN=arn:aws:states:us-east-1:000000000000:stateMachine:podcast-transcription
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - WHISPER_SERVICE_URL=http://whisper:9000
       - CORS_ORIGINS=http://localhost:3017,http://frontend:3017
