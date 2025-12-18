@@ -343,6 +343,7 @@ def _format_episode_response(episode_doc: dict) -> EpisodeResponse:
         duration_minutes=episode_doc.get("duration_minutes"),
         s3_audio_key=episode_doc.get("s3_audio_key"),
         transcript_status=episode_doc.get("transcript_status", "pending"),
+        processing_step=episode_doc.get("processing_step"),
         transcript_s3_key=episode_doc.get("transcript_s3_key"),
         discovered_at=episode_doc["discovered_at"],
         processed_at=episode_doc.get("processed_at"),

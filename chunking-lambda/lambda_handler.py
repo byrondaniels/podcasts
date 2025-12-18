@@ -200,7 +200,8 @@ def update_mongodb(episode_id: str, s3_audio_key: str):
             {"episode_id": episode_id},
             {
                 "$set": {
-                    "status": "processing",
+                    "transcript_status": "processing",
+                    "processing_step": "chunking",
                     "s3_audio_key": s3_audio_key
                 }
             },
@@ -263,6 +264,18 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     downloaded_file = None
 
     try:
+        # Update status to downloading
+        db = get_mongo_connection()
+        db.episodes.update_one(
+            {"episode_id": episode_id},
+            {
+                "$set": {
+                    "transcript_status": "processing",
+                    "processing_step": "downloading"
+                }
+            }
+        )
+
         # Step 1: Download audio
         downloaded_file = download_audio(audio_url, episode_id)
 
@@ -298,7 +311,8 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 {"episode_id": episode_id},
                 {
                     "$set": {
-                        "status": "error",
+                        "transcript_status": "failed",
+                        "processing_step": "chunking",
                         "error_message": str(e)
                     }
                 }

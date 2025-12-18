@@ -77,10 +77,40 @@
 .results-count {
   display: flex;
   align-items: center;
+  gap: 1rem;
   font-size: 0.9375rem;
   font-weight: 600;
   color: #6b7280;
   margin-left: auto;
+}
+
+.auto-refresh-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.75rem;
+  color: #3b82f6;
+  font-weight: 500;
+  padding: 0.25rem 0.5rem;
+  background-color: #eff6ff;
+  border-radius: 0.375rem;
+}
+
+.auto-refresh-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: #3b82f6;
+  animation: pulse-dot 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }
 
 /* Poll Button */
@@ -253,9 +283,18 @@
 
 .episode-row-actions {
   display: flex;
-  align-items: center;
-  gap: 1rem;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.75rem;
   flex-shrink: 0;
+}
+
+.episode-status-container {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5rem;
+  width: 100%;
 }
 
 .episode-title {

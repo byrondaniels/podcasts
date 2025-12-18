@@ -1,4 +1,5 @@
-export type TranscriptStatus = 'processing' | 'completed' | 'failed';
+export type TranscriptStatus = 'pending' | 'processing' | 'completed' | 'failed';
+export type ProcessingStep = 'downloading' | 'chunking' | 'transcribing' | 'merging' | 'completed';
 
 export interface Episode {
   episode_id: string;
@@ -8,6 +9,7 @@ export interface Episode {
   published_date: string; // ISO 8601 format
   duration_minutes: number;
   transcript_status: TranscriptStatus;
+  processing_step?: ProcessingStep;
   transcript_s3_key?: string;
 }
 

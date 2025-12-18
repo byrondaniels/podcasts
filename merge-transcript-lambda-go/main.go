@@ -204,6 +204,28 @@ func mergeTranscripts(ctx context.Context, transcripts []TranscriptChunk, s3Buck
 	return mergedText, totalWords, nil
 }
 
+// updateEpisodeStep updates the processing step in MongoDB
+func updateEpisodeStep(ctx context.Context, episodeID, step string) {
+	db := mongoClient.Database("")
+	episodesCollection := db.Collection("episodes")
+
+	_, err := episodesCollection.UpdateOne(
+		ctx,
+		bson.M{"episode_id": episodeID},
+		bson.M{
+			"$set": bson.M{
+				"processing_step": step,
+			},
+		},
+	)
+
+	if err != nil {
+		log.Printf("Failed to update processing step in MongoDB: %v", err)
+	} else {
+		log.Printf("Updated episode %s processing step to: %s", episodeID, step)
+	}
+}
+
 // updateEpisodeInMongoDB updates the episode document with completion status
 func updateEpisodeInMongoDB(ctx context.Context, episodeID, transcriptS3Key string) error {
 	db := mongoClient.Database("")
@@ -214,7 +236,8 @@ func updateEpisodeInMongoDB(ctx context.Context, episodeID, transcriptS3Key stri
 		bson.M{"episode_id": episodeID},
 		bson.M{
 			"$set": bson.M{
-				"status":            "completed",
+				"transcript_status": "completed",
+				"processing_step":   "completed",
 				"transcript_s3_key": transcriptS3Key,
 				"processed_at":      time.Now().UTC(),
 			},
@@ -245,9 +268,10 @@ func updateEpisodeError(ctx context.Context, episodeID, errorMessage string) {
 		bson.M{"episode_id": episodeID},
 		bson.M{
 			"$set": bson.M{
-				"status":        "error",
-				"error_message": errorMessage,
-				"processed_at":  time.Now().UTC(),
+				"transcript_status": "failed",
+				"processing_step":   "merging",
+				"error_message":     errorMessage,
+				"processed_at":      time.Now().UTC(),
 			},
 		},
 	)
@@ -295,6 +319,9 @@ func HandleRequest(ctx context.Context, event LambdaEvent) (LambdaResponse, erro
 	if event.TotalChunks > 0 && len(event.Transcripts) != event.TotalChunks {
 		log.Printf("Warning: Expected %d chunks but received %d", event.TotalChunks, len(event.Transcripts))
 	}
+
+	// Update episode status to merging
+	updateEpisodeStep(ctx, event.EpisodeID, "merging")
 
 	// Check for missing chunks
 	chunkIndices := make(map[int]bool)
