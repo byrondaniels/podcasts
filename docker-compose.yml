@@ -45,60 +45,149 @@ services:
       retries: 5
       start_period: 10s
 
-  # LocalStack (AWS Services Emulation)
-  localstack:
-    image: localstack/localstack:latest
-    container_name: podcast-localstack
-    restart: unless-stopped
-    ports:
-      - "4566:4566"
-      - "4510-4559:4510-4559"
-    environment:
-      - SERVICES=s3,lambda,stepfunctions,events
-      - DEBUG=1
-      - DATA_DIR=/var/lib/localstack
-      - DOCKER_HOST=unix:///var/run/docker.sock
-      - AWS_DEFAULT_REGION=us-east-1
-      - AWS_ACCESS_KEY_ID=test
-      - AWS_SECRET_ACCESS_KEY=test
-      - LAMBDA_RUNTIME_ENVIRONMENT_TIMEOUT=900
-      - LAMBDA_DOCKER_NETWORK=podcast-network
-      - LAMBDA_REMOTE_DOCKER=false
-      - PERSISTENCE=1
-      - WHISPER_SERVICE_URL=http://whisper:9000
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-    volumes:
-      - localstack-data:/var/lib/localstack
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ./localstack-init:/etc/localstack/init/ready.d:ro
-      - ./poll-lambda-go/poll-lambda-go.zip:/tmp/lambda/poll-lambda-go.zip:ro
-      - ./poll-lambda-go/bootstrap:/tmp/lambda/poll-lambda/bootstrap:ro
-      - ./merge-transcript-lambda-go/merge-transcript-lambda-go.zip:/tmp/lambda/merge-transcript-lambda-go.zip:ro
-      - ./merge-transcript-lambda-go/bootstrap:/tmp/lambda/merge-lambda/bootstrap:ro
+  # Minio initialization - creates required buckets
+  minio-init:
+    image: minio/mc:latest
+    container_name: podcast-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set myminio http://minio:9002 minioadmin minioadmin;
+      mc mb myminio/podcast-audio --ignore-existing;
+      mc mb myminio/podcast-transcripts --ignore-existing;
+      mc anonymous set download myminio/podcast-transcripts;
+      echo 'Buckets created successfully';
+      exit 0;
+      "
     networks:
       - podcast-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
+
+  # Poll Lambda HTTP Service
+  poll-lambda:
+    build:
+      context: ./poll-lambda-go
+      dockerfile: Dockerfile
+    container_name: podcast-poll-lambda
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      - MONGODB_URI=mongodb://mongodb:27017/podcast_db
+      - AWS_REGION=us-east-1
+      - PORT=8001
     depends_on:
       mongodb:
         condition: service_healthy
-
-  # Unified Lambda Builder - builds all Lambda functions using Docker
-  # Usage: docker-compose run --rm lambda-builder [all|go|python|poll|merge|chunking|whisper]
-  lambda-builder:
-    image: docker:24-cli
-    container_name: podcast-lambda-builder
-    working_dir: /workspace
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - .:/workspace
-    command: sh -c "/workspace/lambdas/build.sh all"
     networks:
       - podcast-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Chunking Lambda HTTP Service
+  chunking-lambda:
+    build:
+      context: ./chunking-lambda
+      dockerfile: Dockerfile
+    container_name: podcast-chunking-lambda
+    restart: unless-stopped
+    ports:
+      - "8002:8002"
+    environment:
+      - MONGODB_URI=mongodb://mongodb:27017/podcast_db
+      - MONGODB_DB_NAME=podcast_db
+      - AWS_ACCESS_KEY_ID=minioadmin
+      - AWS_SECRET_ACCESS_KEY=minioadmin
+      - AWS_REGION=us-east-1
+      - AWS_ENDPOINT_URL=http://minio:9002
+      - S3_BUCKET=podcast-audio
+      - PORT=8002
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    networks:
+      - podcast-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Whisper Lambda HTTP Service
+  whisper-lambda:
+    build:
+      context: ./whisper-lambda
+      dockerfile: Dockerfile
+    container_name: podcast-whisper-lambda
+    restart: unless-stopped
+    ports:
+      - "8003:8003"
+    environment:
+      - AWS_ACCESS_KEY_ID=minioadmin
+      - AWS_SECRET_ACCESS_KEY=minioadmin
+      - AWS_REGION=us-east-1
+      - AWS_ENDPOINT_URL=http://minio:9002
+      - S3_BUCKET=podcast-audio
+      - WHISPER_SERVICE_URL=http://whisper:9000
+      - PORT=8003
+    depends_on:
+      minio:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+      whisper:
+        condition: service_healthy
+    networks:
+      - podcast-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Merge Lambda HTTP Service
+  merge-lambda:
+    build:
+      context: ./merge-transcript-lambda-go
+      dockerfile: Dockerfile
+    container_name: podcast-merge-lambda
+    restart: unless-stopped
+    ports:
+      - "8004:8004"
+    environment:
+      - MONGODB_URI=mongodb://mongodb:27017/podcast_db
+      - AWS_ACCESS_KEY_ID=minioadmin
+      - AWS_SECRET_ACCESS_KEY=minioadmin
+      - AWS_REGION=us-east-1
+      - AWS_ENDPOINT_URL=http://minio:9002
+      - S3_BUCKET=podcast-transcripts
+      - PORT=8004
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    networks:
+      - podcast-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
   # Backend API (Python FastAPI)
   backend:
@@ -117,9 +206,14 @@ services:
       - AWS_REGION=us-east-1
       - AWS_ENDPOINT_URL=http://minio:9002
       - S3_BUCKET_NAME=${S3_BUCKET_NAME:-podcast-transcripts}
-      - STEP_FUNCTION_ARN=arn:aws:states:us-east-1:000000000000:stateMachine:podcast-transcription
+      - S3_AUDIO_BUCKET=podcast-audio
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - WHISPER_SERVICE_URL=http://whisper:9000
+      # Lambda service URLs for orchestration
+      - POLL_LAMBDA_URL=http://poll-lambda:8001
+      - CHUNKING_LAMBDA_URL=http://chunking-lambda:8002
+      - WHISPER_LAMBDA_URL=http://whisper-lambda:8003
+      - MERGE_LAMBDA_URL=http://merge-lambda:8004
       - CORS_ORIGINS=http://localhost:3017,http://frontend:3017
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - APP_HOST=0.0.0.0
@@ -132,7 +226,17 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
       whisper:
+        condition: service_healthy
+      poll-lambda:
+        condition: service_healthy
+      chunking-lambda:
+        condition: service_healthy
+      whisper-lambda:
+        condition: service_healthy
+      merge-lambda:
         condition: service_healthy
     networks:
       - podcast-network
@@ -208,7 +312,5 @@ volumes:
     name: podcast-mongodb-data
   minio-data:
     name: podcast-minio-data
-  localstack-data:
-    name: podcast-localstack-data
   whisper-models:
     name: podcast-whisper-models

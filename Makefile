@@ -31,11 +31,18 @@ up: ## Start all services
 	@echo "$(GREEN)✓ Services started$(NC)"
 	@echo ""
 	@echo "$(BLUE)Service URLs:$(NC)"
-	@echo "  Frontend:  $(GREEN)http://localhost:3017$(NC)"
-	@echo "  Backend:   $(GREEN)http://localhost:8000$(NC)"
-	@echo "  API Docs:  $(GREEN)http://localhost:8000/docs$(NC)"
-	@echo "  MongoDB:   $(GREEN)mongodb://localhost:27017$(NC)"
-	@echo "  LocalStack: $(GREEN)http://localhost:4566$(NC)"
+	@echo "  Frontend:      $(GREEN)http://localhost:3017$(NC)"
+	@echo "  Backend API:   $(GREEN)http://localhost:8000$(NC)"
+	@echo "  API Docs:      $(GREEN)http://localhost:8000/docs$(NC)"
+	@echo "  MongoDB:       $(GREEN)mongodb://localhost:27017$(NC)"
+	@echo "  Minio Console: $(GREEN)http://localhost:9001$(NC)"
+	@echo "  Minio S3 API:  $(GREEN)http://localhost:9002$(NC)"
+	@echo ""
+	@echo "$(BLUE)Lambda Services:$(NC)"
+	@echo "  Poll Lambda:     $(GREEN)http://localhost:8001$(NC)"
+	@echo "  Chunking Lambda: $(GREEN)http://localhost:8002$(NC)"
+	@echo "  Whisper Lambda:  $(GREEN)http://localhost:8003$(NC)"
+	@echo "  Merge Lambda:    $(GREEN)http://localhost:8004$(NC)"
 
 down: ## Stop all services
 	@echo "$(BLUE)Stopping all services...$(NC)"
@@ -59,8 +66,23 @@ logs-frontend: ## View frontend logs
 logs-mongodb: ## View MongoDB logs
 	docker-compose logs -f mongodb
 
-logs-localstack: ## View LocalStack logs
-	docker-compose logs -f localstack
+logs-minio: ## View Minio logs
+	docker-compose logs -f minio
+
+logs-lambdas: ## View all Lambda service logs
+	docker-compose logs -f poll-lambda chunking-lambda whisper-lambda merge-lambda
+
+logs-poll: ## View poll-lambda logs
+	docker-compose logs -f poll-lambda
+
+logs-chunking: ## View chunking-lambda logs
+	docker-compose logs -f chunking-lambda
+
+logs-whisper-lambda: ## View whisper-lambda logs
+	docker-compose logs -f whisper-lambda
+
+logs-merge: ## View merge-lambda logs
+	docker-compose logs -f merge-lambda
 
 shell-backend: ## Open shell in backend container
 	@echo "$(BLUE)Opening shell in backend container...$(NC)"
@@ -84,14 +106,26 @@ health: ## Check health of all services
 	@echo "$(YELLOW)MongoDB:$(NC)"
 	@docker-compose exec mongodb mongosh --quiet --eval "db.runCommand('ping')" 2>/dev/null && echo "$(GREEN)✓ Healthy$(NC)" || echo "$(YELLOW)✗ Unhealthy$(NC)"
 	@echo ""
+	@echo "$(YELLOW)Minio:$(NC)"
+	@curl -sf http://localhost:9002/minio/health/live > /dev/null && echo "$(GREEN)✓ Healthy$(NC)" || echo "$(YELLOW)✗ Unhealthy$(NC)"
+	@echo ""
 	@echo "$(YELLOW)Backend API:$(NC)"
-	@curl -f http://localhost:8000/health 2>/dev/null && echo "$(GREEN)✓ Healthy$(NC)" || echo "$(YELLOW)✗ Unhealthy$(NC)"
+	@curl -sf http://localhost:8000/health > /dev/null && echo "$(GREEN)✓ Healthy$(NC)" || echo "$(YELLOW)✗ Unhealthy$(NC)"
 	@echo ""
 	@echo "$(YELLOW)Frontend:$(NC)"
-	@curl -f http://localhost:3017 2>/dev/null > /dev/null && echo "$(GREEN)✓ Healthy$(NC)" || echo "$(YELLOW)✗ Unhealthy$(NC)"
+	@curl -sf http://localhost:3017 > /dev/null && echo "$(GREEN)✓ Healthy$(NC)" || echo "$(YELLOW)✗ Unhealthy$(NC)"
 	@echo ""
-	@echo "$(YELLOW)LocalStack:$(NC)"
-	@curl -f http://localhost:4566/_localstack/health 2>/dev/null > /dev/null && echo "$(GREEN)✓ Healthy$(NC)" || echo "$(YELLOW)✗ Unhealthy$(NC)"
+	@echo "$(YELLOW)Poll Lambda:$(NC)"
+	@curl -sf http://localhost:8001/health > /dev/null && echo "$(GREEN)✓ Healthy$(NC)" || echo "$(YELLOW)✗ Unhealthy$(NC)"
+	@echo ""
+	@echo "$(YELLOW)Chunking Lambda:$(NC)"
+	@curl -sf http://localhost:8002/health > /dev/null && echo "$(GREEN)✓ Healthy$(NC)" || echo "$(YELLOW)✗ Unhealthy$(NC)"
+	@echo ""
+	@echo "$(YELLOW)Whisper Lambda:$(NC)"
+	@curl -sf http://localhost:8003/health > /dev/null && echo "$(GREEN)✓ Healthy$(NC)" || echo "$(YELLOW)✗ Unhealthy$(NC)"
+	@echo ""
+	@echo "$(YELLOW)Merge Lambda:$(NC)"
+	@curl -sf http://localhost:8004/health > /dev/null && echo "$(GREEN)✓ Healthy$(NC)" || echo "$(YELLOW)✗ Unhealthy$(NC)"
 
 init-db: ## Initialize MongoDB with schemas and sample data
 	@echo "$(BLUE)Initializing MongoDB...$(NC)"
@@ -99,7 +133,7 @@ init-db: ## Initialize MongoDB with schemas and sample data
 	@echo "$(GREEN)✓ Database initialized$(NC)"
 
 clean: ## Stop services and remove volumes (WARNING: deletes all data)
-	@echo "$(YELLOW)⚠ This will delete all data in MongoDB and LocalStack$(NC)"
+	@echo "$(YELLOW)⚠ This will delete all data in MongoDB and Minio$(NC)"
 	@read -p "Are you sure? [y/N] " -n 1 -r; \
 	echo; \
 	if [[ $$REPLY =~ ^[Yy]$$ ]]; then \
@@ -126,6 +160,12 @@ rebuild-frontend: ## Rebuild only frontend container
 	docker-compose build --no-cache frontend
 	docker-compose up -d frontend
 	@echo "$(GREEN)✓ Frontend rebuilt$(NC)"
+
+rebuild-lambdas: ## Rebuild all Lambda service containers
+	@echo "$(BLUE)Rebuilding Lambda containers...$(NC)"
+	docker-compose build --no-cache poll-lambda chunking-lambda whisper-lambda merge-lambda
+	docker-compose up -d poll-lambda chunking-lambda whisper-lambda merge-lambda
+	@echo "$(GREEN)✓ Lambda services rebuilt$(NC)"
 
 install: setup up ## Full installation - setup and start services
 	@echo "$(GREEN)✓ Installation complete!$(NC)"
@@ -164,71 +204,74 @@ test-backend: ## Run backend tests
 	@echo "$(BLUE)Running backend tests...$(NC)"
 	docker-compose exec backend pytest
 
-s3-list: ## List S3 buckets in LocalStack
-	@echo "$(BLUE)S3 Buckets:$(NC)"
-	docker-compose exec localstack awslocal s3 ls
-
-s3-list-audio: ## List files in podcast-audio bucket
-	@echo "$(BLUE)Files in podcast-audio bucket:$(NC)"
-	docker-compose exec localstack awslocal s3 ls s3://podcast-audio --recursive
-
-s3-list-transcripts: ## List files in podcast-transcripts bucket
-	@echo "$(BLUE)Files in podcast-transcripts bucket:$(NC)"
-	docker-compose exec localstack awslocal s3 ls s3://podcast-transcripts --recursive
-
 prune: ## Remove unused Docker resources
 	@echo "$(BLUE)Pruning Docker resources...$(NC)"
 	docker system prune -f
 	@echo "$(GREEN)✓ Prune complete$(NC)"
 
 # =============================================================================
-# Lambda Build Targets (Unified Docker-based builds)
+# Minio/S3 Operations
 # =============================================================================
 
-build-lambdas: ## Build all Lambda functions using unified Docker build
-	@echo "$(BLUE)Building all Lambda functions...$(NC)"
-	./lambdas/build.sh all
-	@echo "$(GREEN)✓ All Lambdas built$(NC)"
+s3-list: ## List S3 buckets in Minio
+	@echo "$(BLUE)S3 Buckets:$(NC)"
+	docker-compose exec minio mc ls myminio/ 2>/dev/null || \
+		(docker-compose exec minio mc alias set myminio http://localhost:9002 minioadmin minioadmin && \
+		docker-compose exec minio mc ls myminio/)
 
-build-go-lambdas: ## Build all Go Lambda functions
-	@echo "$(BLUE)Building Go Lambdas...$(NC)"
-	./lambdas/build.sh go
-	@echo "$(GREEN)✓ Go Lambdas built$(NC)"
+s3-list-audio: ## List files in podcast-audio bucket
+	@echo "$(BLUE)Files in podcast-audio bucket:$(NC)"
+	docker-compose exec minio mc ls myminio/podcast-audio --recursive 2>/dev/null || echo "Bucket empty or not found"
 
-build-python-lambdas: ## Build all Python Lambda functions
-	@echo "$(BLUE)Building Python Lambdas...$(NC)"
-	./lambdas/build.sh python
-	@echo "$(GREEN)✓ Python Lambdas built$(NC)"
+s3-list-transcripts: ## List files in podcast-transcripts bucket
+	@echo "$(BLUE)Files in podcast-transcripts bucket:$(NC)"
+	docker-compose exec minio mc ls myminio/podcast-transcripts --recursive 2>/dev/null || echo "Bucket empty or not found"
 
-build-poll-lambda: ## Build Poll Lambda (Go)
-	@echo "$(BLUE)Building Poll Lambda...$(NC)"
-	./lambdas/build.sh poll
-	@echo "$(GREEN)✓ Poll Lambda built$(NC)"
+# =============================================================================
+# Lambda HTTP Service Operations
+# =============================================================================
 
-build-merge-lambda: ## Build Merge Lambda (Go)
-	@echo "$(BLUE)Building Merge Lambda...$(NC)"
-	./lambdas/build.sh merge
-	@echo "$(GREEN)✓ Merge Lambda built$(NC)"
+invoke-poll: ## Invoke poll-lambda via HTTP
+	@echo "$(BLUE)Invoking poll-lambda...$(NC)"
+	curl -X POST http://localhost:8001/invoke -H "Content-Type: application/json" -d '{}' | jq .
 
-build-chunking-lambda: ## Build Chunking Lambda (Python)
-	@echo "$(BLUE)Building Chunking Lambda...$(NC)"
-	./lambdas/build.sh chunking
-	@echo "$(GREEN)✓ Chunking Lambda built$(NC)"
+invoke-chunking: ## Invoke chunking-lambda via HTTP (requires payload)
+	@echo "$(BLUE)Invoking chunking-lambda...$(NC)"
+	@echo "$(YELLOW)Usage: curl -X POST http://localhost:8002/invoke -H 'Content-Type: application/json' -d '{\"episode_id\":\"...\",\"audio_url\":\"...\",\"s3_bucket\":\"podcast-audio\"}'$(NC)"
 
-build-whisper-lambda: ## Build Whisper Lambda (Python)
-	@echo "$(BLUE)Building Whisper Lambda...$(NC)"
-	./lambdas/build.sh whisper
-	@echo "$(GREEN)✓ Whisper Lambda built$(NC)"
+invoke-whisper: ## Invoke whisper-lambda via HTTP (requires payload)
+	@echo "$(BLUE)Invoking whisper-lambda...$(NC)"
+	@echo "$(YELLOW)Usage: curl -X POST http://localhost:8003/invoke -H 'Content-Type: application/json' -d '{\"episode_id\":\"...\",\"chunk_index\":0,\"s3_key\":\"...\",\"s3_bucket\":\"podcast-audio\"}'$(NC)"
 
-build-lambda-layers: ## Build Lambda layers (Python deps, ffmpeg)
-	@echo "$(BLUE)Building Lambda layers...$(NC)"
-	./lambdas/build.sh layers
-	@echo "$(GREEN)✓ Lambda layers built$(NC)"
+invoke-merge: ## Invoke merge-lambda via HTTP (requires payload)
+	@echo "$(BLUE)Invoking merge-lambda...$(NC)"
+	@echo "$(YELLOW)Usage: curl -X POST http://localhost:8004/invoke -H 'Content-Type: application/json' -d '{\"episode_id\":\"...\",\"total_chunks\":1,\"transcripts\":[...],\"s3_bucket\":\"podcast-audio\"}'$(NC)"
 
-clean-lambdas: ## Clean all Lambda build artifacts
-	@echo "$(BLUE)Cleaning Lambda artifacts...$(NC)"
-	./lambdas/build.sh clean
-	@echo "$(GREEN)✓ Lambda artifacts cleaned$(NC)"
+# =============================================================================
+# Transcription Workflow
+# =============================================================================
+
+transcribe: ## Start transcription for an episode (Usage: make transcribe EPISODE_ID=xxx)
+	@if [ -z "$(EPISODE_ID)" ]; then \
+		echo "$(YELLOW)Usage: make transcribe EPISODE_ID=xxx$(NC)"; \
+		exit 1; \
+	fi
+	@echo "$(BLUE)Starting transcription for episode $(EPISODE_ID)...$(NC)"
+	curl -X POST http://localhost:8000/api/transcription/start \
+		-H "Content-Type: application/json" \
+		-d '{"episode_id":"$(EPISODE_ID)"}' | jq .
+
+transcribe-status: ## Check transcription status (Usage: make transcribe-status EPISODE_ID=xxx)
+	@if [ -z "$(EPISODE_ID)" ]; then \
+		echo "$(YELLOW)Usage: make transcribe-status EPISODE_ID=xxx$(NC)"; \
+		exit 1; \
+	fi
+	@echo "$(BLUE)Checking transcription status for episode $(EPISODE_ID)...$(NC)"
+	curl -s http://localhost:8000/api/transcription/status/$(EPISODE_ID) | jq .
+
+# =============================================================================
+# Go Lambda Development (for production AWS deployment)
+# =============================================================================
 
 test-go-lambdas: ## Run tests for Go Lambdas
 	@echo "$(BLUE)Testing Go Lambdas...$(NC)"
@@ -244,44 +287,26 @@ go-mod-tidy: ## Run go mod tidy on all Go modules
 	cd merge-transcript-lambda-go && go mod tidy
 	@echo "$(GREEN)✓ Go modules tidied$(NC)"
 
-deploy-lambdas: build-lambdas ## Build and deploy all Lambdas to LocalStack
-	@echo "$(BLUE)Deploying all Lambdas to LocalStack...$(NC)"
-	docker-compose exec localstack /etc/localstack/init/ready.d/init-lambda.sh
-	@echo "$(GREEN)✓ All Lambdas deployed to LocalStack$(NC)"
+# =============================================================================
+# Legacy Lambda Build Targets (for Terraform AWS deployment)
+# =============================================================================
 
-list-lambdas: ## List all Lambda functions in LocalStack
-	@echo "$(BLUE)Lambda functions in LocalStack:$(NC)"
-	docker-compose exec localstack awslocal lambda list-functions --query 'Functions[].FunctionName' --output table
+build-lambdas: ## Build all Lambda functions for AWS deployment
+	@echo "$(BLUE)Building all Lambda functions for AWS deployment...$(NC)"
+	./lambdas/build.sh all
+	@echo "$(GREEN)✓ All Lambdas built$(NC)"
 
-invoke-poll-lambda: ## Manually invoke the poll Lambda in LocalStack
-	@echo "$(BLUE)Invoking poll-rss-feeds Lambda...$(NC)"
-	docker-compose exec localstack awslocal lambda invoke --function-name poll-rss-feeds /tmp/output.json
-	@echo "$(GREEN)Response:$(NC)"
-	docker-compose exec localstack cat /tmp/output.json | jq .
-	@echo ""
+build-go-lambdas: ## Build all Go Lambda functions for AWS deployment
+	@echo "$(BLUE)Building Go Lambdas...$(NC)"
+	./lambdas/build.sh go
+	@echo "$(GREEN)✓ Go Lambdas built$(NC)"
 
-invoke-chunking-lambda: ## Manually invoke the chunking Lambda in LocalStack
-	@echo "$(BLUE)Invoking chunking-lambda...$(NC)"
-	@echo '{"episode_id":"test123","audio_url":"https://example.com/audio.mp3","s3_bucket":"podcast-audio"}' | \
-	docker-compose exec -T localstack awslocal lambda invoke --function-name chunking-lambda --payload file:///dev/stdin /tmp/output.json
-	@echo "$(GREEN)Response:$(NC)"
-	docker-compose exec localstack cat /tmp/output.json | jq .
+build-python-lambdas: ## Build all Python Lambda functions for AWS deployment
+	@echo "$(BLUE)Building Python Lambdas...$(NC)"
+	./lambdas/build.sh python
+	@echo "$(GREEN)✓ Python Lambdas built$(NC)"
 
-invoke-whisper-lambda: ## Manually invoke the whisper Lambda in LocalStack
-	@echo "$(BLUE)Invoking whisper-lambda...$(NC)"
-	@echo '{"s3_bucket":"podcast-audio","s3_key":"test/chunk.mp3"}' | \
-	docker-compose exec -T localstack awslocal lambda invoke --function-name whisper-lambda --payload file:///dev/stdin /tmp/output.json
-	@echo "$(GREEN)Response:$(NC)"
-	docker-compose exec localstack cat /tmp/output.json | jq .
-
-invoke-merge-lambda: ## Manually invoke the merge transcript Lambda in LocalStack
-	@echo "$(BLUE)Invoking merge-transcript Lambda...$(NC)"
-	@echo '{"episode_id":"test123","chunks":[{"index":0,"s3_key":"test/chunk0.txt"}]}' | \
-	docker-compose exec -T localstack awslocal lambda invoke --function-name merge-transcript --payload file:///dev/stdin /tmp/output.json
-	@echo "$(GREEN)Response:$(NC)"
-	docker-compose exec localstack cat /tmp/output.json | jq .
-
-# Legacy aliases for backwards compatibility
-build-poll-lambda-go: build-poll-lambda
-build-merge-lambda-go: build-merge-lambda
-build-all-lambdas: build-lambdas
+clean-lambdas: ## Clean all Lambda build artifacts
+	@echo "$(BLUE)Cleaning Lambda artifacts...$(NC)"
+	./lambdas/build.sh clean
+	@echo "$(GREEN)✓ Lambda artifacts cleaned$(NC)"

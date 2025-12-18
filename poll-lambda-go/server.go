@@ -1,4 +1,4 @@
-//go:build !http
+//go:build http
 
 package main
 
@@ -8,15 +8,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"sync"
 	"time"
 
-	"github.com/aws/aws-lambda-go/lambda"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/sfn"
 	"github.com/mmcdole/gofeed"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -25,50 +23,57 @@ import (
 )
 
 var (
-	// Global clients (reused across Lambda invocations)
 	mongoClient *mongo.Client
-	sfnClient   *sfn.SFN
 	feedParser  *gofeed.Parser
 )
 
 // Podcast represents a podcast document
 type Podcast struct {
-	ID          primitive.ObjectID `bson:"_id"`
-	PodcastID   string             `bson:"podcast_id,omitempty"`
-	FeedURL     string             `bson:"feed_url,omitempty"`
-	RssURL      string             `bson:"rss_url,omitempty"`
-	Title       string             `bson:"title"`
-	Active      bool               `bson:"active"`
+	ID        primitive.ObjectID `bson:"_id"`
+	PodcastID string             `bson:"podcast_id,omitempty"`
+	FeedURL   string             `bson:"feed_url,omitempty"`
+	RssURL    string             `bson:"rss_url,omitempty"`
+	Title     string             `bson:"title"`
+	Active    bool               `bson:"active"`
 }
 
 // Episode represents an episode document
 type Episode struct {
-	ID                string             `bson:"_id"`
-	EpisodeID         string             `bson:"episode_id"`
-	PodcastID         string             `bson:"podcast_id"`
-	Title             string             `bson:"title"`
-	Description       string             `bson:"description"`
-	AudioURL          string             `bson:"audio_url"`
-	PublishedDate     *time.Time         `bson:"published_date,omitempty"`
-	TranscriptStatus  string             `bson:"transcript_status"`
-	CreatedAt         time.Time          `bson:"created_at"`
-	UpdatedAt         time.Time          `bson:"updated_at"`
+	ID               string     `bson:"_id"`
+	EpisodeID        string     `bson:"episode_id"`
+	PodcastID        string     `bson:"podcast_id"`
+	Title            string     `bson:"title"`
+	Description      string     `bson:"description"`
+	AudioURL         string     `bson:"audio_url"`
+	PublishedDate    *time.Time `bson:"published_date,omitempty"`
+	TranscriptStatus string     `bson:"transcript_status"`
+	CreatedAt        time.Time  `bson:"created_at"`
+	UpdatedAt        time.Time  `bson:"updated_at"`
 }
 
-// PodcastResult holds processing stats for a single podcast
+// NewEpisode represents a newly discovered episode
+type NewEpisode struct {
+	EpisodeID string `json:"episode_id"`
+	Title     string `json:"title"`
+	AudioURL  string `json:"audio_url"`
+	PodcastID string `json:"podcast_id"`
+}
+
+// PodcastResult holds processing stats
 type PodcastResult struct {
-	PodcastID    string   `json:"podcast_id"`
-	PodcastTitle string   `json:"podcast_title"`
-	NewEpisodes  int      `json:"new_episodes"`
-	Errors       []string `json:"errors"`
+	PodcastID    string       `json:"podcast_id"`
+	PodcastTitle string       `json:"podcast_title"`
+	NewEpisodes  int          `json:"new_episodes"`
+	Episodes     []NewEpisode `json:"episodes,omitempty"`
+	Errors       []string     `json:"errors"`
 }
 
-// Request is the Lambda function request
+// Request is the request structure
 type Request struct {
 	PodcastID string `json:"podcast_id,omitempty"`
 }
 
-// Response is the Lambda function response
+// Response is the response structure
 type Response struct {
 	StatusCode     int             `json:"statusCode"`
 	Message        string          `json:"message"`
@@ -79,21 +84,11 @@ type Response struct {
 	PodcastResults []PodcastResult `json:"podcast_results,omitempty"`
 }
 
-// StepFunctionInput is the input for Step Functions
-type StepFunctionInput struct {
-	EpisodeID string `json:"episode_id"`
-	AudioURL  string `json:"audio_url"`
-	S3Bucket  string `json:"s3_bucket"`
-}
-
 func init() {
-	// Skip initialization during tests
 	if os.Getenv("SKIP_INIT") == "true" {
 		return
 	}
-	// Initialize global clients once
 	initMongoClient()
-	initSFNClient()
 	feedParser = gofeed.NewParser()
 }
 
@@ -112,7 +107,6 @@ func initMongoClient() {
 		log.Fatalf("Failed to connect to MongoDB: %v", err)
 	}
 
-	// Ping to verify connection
 	if err = mongoClient.Ping(ctx, nil); err != nil {
 		log.Fatalf("Failed to ping MongoDB: %v", err)
 	}
@@ -120,49 +114,29 @@ func initMongoClient() {
 	log.Println("Successfully connected to MongoDB")
 }
 
-func initSFNClient() {
-	awsConfig := &aws.Config{
-		Region: aws.String(os.Getenv("AWS_REGION")),
-	}
-
-	// Use LocalStack endpoint if running locally
-	if endpoint := os.Getenv("AWS_ENDPOINT_URL"); endpoint != "" {
-		awsConfig.Endpoint = aws.String(endpoint)
-	}
-
-	sess := session.Must(session.NewSession(awsConfig))
-	sfnClient = sfn.New(sess)
-}
-
-// generateEpisodeID creates a unique episode ID from audio URL
 func generateEpisodeID(audioURL string) string {
 	hash := sha256.Sum256([]byte(audioURL))
 	return hex.EncodeToString(hash[:])
 }
 
-// extractAudioURL gets the audio URL from a feed item
 func extractAudioURL(item *gofeed.Item) string {
-	// Check enclosures first (most common for podcasts)
 	for _, enc := range item.Enclosures {
 		if enc.Type != "" && len(enc.Type) > 6 && enc.Type[:6] == "audio/" {
 			return enc.URL
 		}
 	}
-
-	// Fallback to item link
 	if item.Link != "" {
 		return item.Link
 	}
-
 	return ""
 }
 
-// processPodcast handles a single podcast feed with error handling
 func processPodcast(ctx context.Context, podcast Podcast, db *mongo.Database) PodcastResult {
 	result := PodcastResult{
 		PodcastID:    podcast.ID.Hex(),
 		PodcastTitle: podcast.Title,
 		NewEpisodes:  0,
+		Episodes:     []NewEpisode{},
 		Errors:       []string{},
 	}
 
@@ -180,7 +154,6 @@ func processPodcast(ctx context.Context, podcast Podcast, db *mongo.Database) Po
 
 	log.Printf("Processing podcast: %s (%s)", podcast.Title, podcast.ID.Hex())
 
-	// Parse RSS feed
 	feed, err := feedParser.ParseURL(feedURL)
 	if err != nil {
 		errMsg := fmt.Sprintf("Failed to parse feed %s: %v", feedURL, err)
@@ -196,8 +169,6 @@ func processPodcast(ctx context.Context, podcast Podcast, db *mongo.Database) Po
 
 	episodesCollection := db.Collection("episodes")
 
-	// Limit to the last 10 episodes (most recent)
-	// RSS feeds typically list newest episodes first, so we take the first 10
 	maxEpisodes := 10
 	itemsToProcess := feed.Items
 	if len(feed.Items) > maxEpisodes {
@@ -206,7 +177,6 @@ func processPodcast(ctx context.Context, podcast Podcast, db *mongo.Database) Po
 			maxEpisodes, len(feed.Items), podcast.Title)
 	}
 
-	// Process each episode in the feed
 	for _, item := range itemsToProcess {
 		audioURL := extractAudioURL(item)
 		if audioURL == "" {
@@ -214,11 +184,9 @@ func processPodcast(ctx context.Context, podcast Podcast, db *mongo.Database) Po
 			continue
 		}
 
-		// Check if episode already exists
 		var existingEpisode Episode
 		err := episodesCollection.FindOne(ctx, bson.M{"audio_url": audioURL}).Decode(&existingEpisode)
 		if err == nil {
-			// Episode already exists
 			continue
 		} else if err != mongo.ErrNoDocuments {
 			errMsg := fmt.Sprintf("Database error checking episode: %v", err)
@@ -227,16 +195,13 @@ func processPodcast(ctx context.Context, podcast Podcast, db *mongo.Database) Po
 			continue
 		}
 
-		// Generate episode ID
 		episodeID := generateEpisodeID(audioURL)
 
-		// Parse published date
 		var publishedDate *time.Time
 		if item.PublishedParsed != nil {
 			publishedDate = item.PublishedParsed
 		}
 
-		// Create episode document
 		episode := Episode{
 			ID:               episodeID,
 			EpisodeID:        episodeID,
@@ -250,7 +215,6 @@ func processPodcast(ctx context.Context, podcast Podcast, db *mongo.Database) Po
 			UpdatedAt:        time.Now().UTC(),
 		}
 
-		// Insert episode into MongoDB
 		_, err = episodesCollection.InsertOne(ctx, episode)
 		if err != nil {
 			if mongo.IsDuplicateKeyError(err) {
@@ -265,63 +229,23 @@ func processPodcast(ctx context.Context, podcast Podcast, db *mongo.Database) Po
 
 		log.Printf("Inserted new episode: %s (%s)", item.Title, episodeID)
 		result.NewEpisodes++
-
-		// Trigger Step Functions workflow
-		if err := triggerStepFunction(ctx, episodeID, audioURL); err != nil {
-			errMsg := fmt.Sprintf("Failed to trigger Step Function for %s: %v", episodeID, err)
-			log.Println(errMsg)
-			result.Errors = append(result.Errors, errMsg)
-
-			// Update episode status to failed
-			_, _ = episodesCollection.UpdateOne(
-				ctx,
-				bson.M{"_id": episodeID},
-				bson.M{"$set": bson.M{"status": "failed", "error": err.Error()}},
-			)
-		} else {
-			log.Printf("Triggered Step Function for episode %s", episodeID)
-		}
+		result.Episodes = append(result.Episodes, NewEpisode{
+			EpisodeID: episodeID,
+			Title:     item.Title,
+			AudioURL:  audioURL,
+			PodcastID: podcast.ID.Hex(),
+		})
+		// NOTE: In HTTP mode, we don't trigger Step Functions
+		// The backend orchestration handles transcription workflow
 	}
 
 	return result
 }
 
-// triggerStepFunction starts a Step Functions execution
-func triggerStepFunction(ctx context.Context, episodeID, audioURL string) error {
-	stepFunctionARN := os.Getenv("STEP_FUNCTION_ARN")
-	s3Bucket := os.Getenv("S3_BUCKET")
-	if s3Bucket == "" {
-		s3Bucket = "podcast-audio-bucket"
-	}
-
-	input := StepFunctionInput{
-		EpisodeID: episodeID,
-		AudioURL:  audioURL,
-		S3Bucket:  s3Bucket,
-	}
-
-	inputJSON, err := json.Marshal(input)
-	if err != nil {
-		return fmt.Errorf("failed to marshal input: %w", err)
-	}
-
-	executionName := fmt.Sprintf("episode-%s-%d", episodeID, time.Now().Unix())
-
-	_, err = sfnClient.StartExecutionWithContext(ctx, &sfn.StartExecutionInput{
-		StateMachineArn: aws.String(stepFunctionARN),
-		Name:            aws.String(executionName),
-		Input:           aws.String(string(inputJSON)),
-	})
-
-	return err
-}
-
-// HandleRequest is the Lambda handler
-func HandleRequest(ctx context.Context, event json.RawMessage) (Response, error) {
+func handleRequest(ctx context.Context, event json.RawMessage) (Response, error) {
 	log.Println("Starting RSS feed polling")
 	log.Printf("Event: %s", string(event))
 
-	// Parse request to check for specific podcast_id
 	var request Request
 	if len(event) > 0 && string(event) != "{}" && string(event) != "null" {
 		if err := json.Unmarshal(event, &request); err != nil {
@@ -339,11 +263,9 @@ func HandleRequest(ctx context.Context, event json.RawMessage) (Response, error)
 		PodcastResults: []PodcastResult{},
 	}
 
-	// Get database
 	db := mongoClient.Database("podcast_db")
 	podcastsCollection := db.Collection("podcasts")
 
-	// Build query - filter by podcast_id if provided, otherwise get all active podcasts
 	query := bson.M{"active": true}
 	if request.PodcastID != "" {
 		query["podcast_id"] = request.PodcastID
@@ -352,7 +274,6 @@ func HandleRequest(ctx context.Context, event json.RawMessage) (Response, error)
 		log.Println("Polling all active podcasts")
 	}
 
-	// Query for podcasts
 	cursor, err := podcastsCollection.Find(ctx, query)
 	if err != nil {
 		response.StatusCode = 500
@@ -384,7 +305,6 @@ func HandleRequest(ctx context.Context, event json.RawMessage) (Response, error)
 		return response, nil
 	}
 
-	// Process podcasts concurrently with bounded parallelism
 	maxConcurrency := 10
 	semaphore := make(chan struct{}, maxConcurrency)
 	var wg sync.WaitGroup
@@ -393,11 +313,11 @@ func HandleRequest(ctx context.Context, event json.RawMessage) (Response, error)
 
 	for _, podcast := range podcasts {
 		wg.Add(1)
-		semaphore <- struct{}{} // Acquire semaphore
+		semaphore <- struct{}{}
 
 		go func(p Podcast) {
 			defer wg.Done()
-			defer func() { <-semaphore }() // Release semaphore
+			defer func() { <-semaphore }()
 
 			result := processPodcast(ctx, p, db)
 
@@ -426,6 +346,65 @@ func HandleRequest(ctx context.Context, event json.RawMessage) (Response, error)
 	return response, nil
 }
 
+func healthHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"status":  "healthy",
+		"service": "poll-lambda",
+	})
+}
+
+func invokeHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		sendError(w, "Failed to read request body", http.StatusBadRequest)
+		return
+	}
+	defer r.Body.Close()
+
+	log.Printf("Received invoke request: %s", string(body))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	response, err := handleRequest(ctx, body)
+	if err != nil {
+		log.Printf("Handler error: %v", err)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.Printf("Failed to encode response: %v", err)
+		sendError(w, "Failed to encode response", http.StatusInternalServerError)
+	}
+}
+
+func sendError(w http.ResponseWriter, message string, statusCode int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"statusCode": statusCode,
+		"message":    message,
+		"error":      true,
+	})
+}
+
 func main() {
-	lambda.Start(HandleRequest)
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8001"
+	}
+
+	http.HandleFunc("/health", healthHandler)
+	http.HandleFunc("/invoke", invokeHandler)
+
+	log.Printf("Starting poll-lambda HTTP server on port %s", port)
+	if err := http.ListenAndServe(":"+port, nil); err != nil {
+		log.Fatalf("Failed to start server: %v", err)
+	}
 }
