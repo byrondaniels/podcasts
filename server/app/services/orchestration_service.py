@@ -8,10 +8,9 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime
 
 import httpx
-from pymongo import MongoClient
 
 from app.config import settings
-from app.database.mongodb import get_database
+from app.database.mongodb import MongoDB
 
 logger = logging.getLogger(__name__)
 
@@ -49,12 +48,12 @@ class OrchestrationService:
         """
         logger.info(f"Starting transcription workflow for episode {episode_id}")
 
-        db = get_database()
+        db = MongoDB.get_db()
         episodes_collection = db.episodes
 
         try:
             # Update status to processing
-            episodes_collection.update_one(
+            await episodes_collection.update_one(
                 {"episode_id": episode_id},
                 {"$set": {"transcript_status": "processing", "updated_at": datetime.utcnow()}}
             )
@@ -105,7 +104,7 @@ class OrchestrationService:
             total_words = merge_result.get("total_words", 0)
 
             # Update episode with success status
-            episodes_collection.update_one(
+            await episodes_collection.update_one(
                 {"episode_id": episode_id},
                 {
                     "$set": {
@@ -132,7 +131,7 @@ class OrchestrationService:
             logger.error(f"Transcription failed for episode {episode_id}: {error_message}")
 
             # Update episode with error status
-            episodes_collection.update_one(
+            await episodes_collection.update_one(
                 {"episode_id": episode_id},
                 {
                     "$set": {
@@ -177,7 +176,6 @@ class OrchestrationService:
     ) -> List[Dict[str, Any]]:
         """Transcribe chunks in parallel with concurrency limit."""
         semaphore = asyncio.Semaphore(max_concurrent)
-        results = []
 
         async def transcribe_with_semaphore(chunk: Dict[str, Any]) -> Dict[str, Any]:
             async with semaphore:

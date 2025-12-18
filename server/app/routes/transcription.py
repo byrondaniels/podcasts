@@ -7,7 +7,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 
-from app.database.mongodb import get_database
+from app.database.mongodb import MongoDB
 from app.services.orchestration_service import get_orchestration_service
 
 logger = logging.getLogger(__name__)
@@ -47,11 +47,11 @@ async def start_transcription(
     This endpoint triggers the transcription workflow in the background
     and returns immediately. Use the status endpoint to check progress.
     """
-    db = get_database()
+    db = MongoDB.get_db()
     episodes_collection = db.episodes
 
     # Look up the episode
-    episode = episodes_collection.find_one({"episode_id": request.episode_id})
+    episode = await episodes_collection.find_one({"episode_id": request.episode_id})
     if not episode:
         raise HTTPException(status_code=404, detail=f"Episode {request.episode_id} not found")
 
@@ -101,10 +101,10 @@ async def start_transcription(
 @router.get("/status/{episode_id}", response_model=TranscriptionStatusResponse)
 async def get_transcription_status(episode_id: str):
     """Get the current transcription status for an episode."""
-    db = get_database()
+    db = MongoDB.get_db()
     episodes_collection = db.episodes
 
-    episode = episodes_collection.find_one({"episode_id": episode_id})
+    episode = await episodes_collection.find_one({"episode_id": episode_id})
     if not episode:
         raise HTTPException(status_code=404, detail=f"Episode {episode_id} not found")
 
@@ -126,10 +126,10 @@ async def retry_transcription(
 
     Resets the status and starts the workflow again.
     """
-    db = get_database()
+    db = MongoDB.get_db()
     episodes_collection = db.episodes
 
-    episode = episodes_collection.find_one({"episode_id": episode_id})
+    episode = await episodes_collection.find_one({"episode_id": episode_id})
     if not episode:
         raise HTTPException(status_code=404, detail=f"Episode {episode_id} not found")
 
@@ -142,7 +142,7 @@ async def retry_transcription(
         raise HTTPException(status_code=400, detail="No audio URL found for episode")
 
     # Reset status
-    episodes_collection.update_one(
+    await episodes_collection.update_one(
         {"episode_id": episode_id},
         {"$set": {"transcript_status": "pending", "error_message": None}}
     )
