@@ -22,6 +22,29 @@ services:
       retries: 5
       start_period: 20s
 
+  # Minio (S3-compatible Object Storage)
+  minio:
+    image: minio/minio:latest
+    container_name: podcast-minio
+    restart: unless-stopped
+    ports:
+      - "9001:9001"  # Console UI
+      - "9002:9002"  # S3 API
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    command: server /data --console-address ":9001" --address ":9002"
+    volumes:
+      - minio-data:/data
+    networks:
+      - podcast-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9002/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   # LocalStack (AWS Services Emulation)
   localstack:
     image: localstack/localstack:latest
@@ -39,6 +62,8 @@ services:
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test
       - LAMBDA_RUNTIME_ENVIRONMENT_TIMEOUT=900
+      - LAMBDA_DOCKER_NETWORK=podcast-network
+      - LAMBDA_REMOTE_DOCKER=false
       - PERSISTENCE=1
       - WHISPER_SERVICE_URL=http://whisper:9000
       - OPENAI_API_KEY=${OPENAI_API_KEY}
@@ -46,10 +71,10 @@ services:
       - localstack-data:/var/lib/localstack
       - /var/run/docker.sock:/var/run/docker.sock
       - ./localstack-init:/etc/localstack/init/ready.d:ro
+      - ./poll-lambda-go/poll-lambda-go.zip:/tmp/lambda/poll-lambda-go.zip:ro
       - ./poll-lambda-go/bootstrap:/tmp/lambda/poll-lambda/bootstrap:ro
+      - ./merge-transcript-lambda-go/merge-transcript-lambda-go.zip:/tmp/lambda/merge-transcript-lambda-go.zip:ro
       - ./merge-transcript-lambda-go/bootstrap:/tmp/lambda/merge-lambda/bootstrap:ro
-      - ./chunking-lambda/chunking-lambda.zip:/tmp/lambda/chunking-lambda.zip:ro
-      - ./whisper-lambda/whisper-lambda.zip:/tmp/lambda/whisper-lambda.zip:ro
     networks:
       - podcast-network
     healthcheck:
@@ -87,10 +112,10 @@ services:
     environment:
       - MONGODB_URL=mongodb://mongodb:27017
       - MONGODB_DB_NAME=podcast_db
-      - AWS_ACCESS_KEY_ID=test
-      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_ACCESS_KEY_ID=minioadmin
+      - AWS_SECRET_ACCESS_KEY=minioadmin
       - AWS_REGION=us-east-1
-      - AWS_ENDPOINT_URL=http://localstack:4566
+      - AWS_ENDPOINT_URL=http://minio:9002
       - S3_BUCKET_NAME=${S3_BUCKET_NAME:-podcast-transcripts}
       - STEP_FUNCTION_ARN=arn:aws:states:us-east-1:000000000000:stateMachine:podcast-transcription
       - OPENAI_API_KEY=${OPENAI_API_KEY}
@@ -104,6 +129,8 @@ services:
       - ./server/scripts:/app/scripts:ro
     depends_on:
       mongodb:
+        condition: service_healthy
+      minio:
         condition: service_healthy
       whisper:
         condition: service_healthy
@@ -179,6 +206,8 @@ networks:
 volumes:
   mongodb-data:
     name: podcast-mongodb-data
+  minio-data:
+    name: podcast-minio-data
   localstack-data:
     name: podcast-localstack-data
   whisper-models:

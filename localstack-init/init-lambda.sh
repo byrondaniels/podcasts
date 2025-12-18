@@ -15,7 +15,7 @@ until awslocal s3 ls 2>/dev/null; do
 done
 echo "LocalStack is ready!"
 
-# Helper function to create or update Lambda
+# Helper function to create or update Lambda from zip file
 create_or_update_lambda() {
     local FUNC_NAME="$1"
     local RUNTIME="$2"
@@ -50,6 +50,46 @@ create_or_update_lambda() {
             --role "arn:aws:iam::000000000000:role/lambda-role" \
             --handler "$HANDLER" \
             --zip-file "fileb://$ZIP_FILE" \
+            --timeout "$TIMEOUT" \
+            --memory-size "$MEMORY" \
+            --environment "$ENV_VARS" \
+            > /dev/null
+        echo "    Created: $FUNC_NAME"
+    fi
+}
+
+# Helper function to create or update Lambda from Docker image
+create_or_update_lambda_from_image() {
+    local FUNC_NAME="$1"
+    local IMAGE_URI="$2"
+    local ENV_VARS="$3"
+    local TIMEOUT="${4:-300}"
+    local MEMORY="${5:-512}"
+
+    echo "  Processing Lambda from image: $FUNC_NAME"
+
+    # Check if function exists
+    if awslocal lambda get-function --function-name "$FUNC_NAME" 2>/dev/null; then
+        echo "    Updating existing function..."
+        awslocal lambda update-function-code \
+            --function-name "$FUNC_NAME" \
+            --image-uri "$IMAGE_URI" \
+            > /dev/null
+
+        awslocal lambda update-function-configuration \
+            --function-name "$FUNC_NAME" \
+            --timeout "$TIMEOUT" \
+            --memory-size "$MEMORY" \
+            --environment "$ENV_VARS" \
+            > /dev/null
+        echo "    Updated: $FUNC_NAME"
+    else
+        echo "    Creating new function..."
+        awslocal lambda create-function \
+            --function-name "$FUNC_NAME" \
+            --package-type Image \
+            --code ImageUri="$IMAGE_URI" \
+            --role "arn:aws:iam::000000000000:role/lambda-role" \
             --timeout "$TIMEOUT" \
             --memory-size "$MEMORY" \
             --environment "$ENV_VARS" \
@@ -97,21 +137,8 @@ else
     MERGE_ZIP=""
 fi
 
-# Chunking Lambda (Python)
-if [ -f /tmp/lambda/chunking-lambda.zip ]; then
-    CHUNKING_ZIP="/tmp/lambda/chunking-lambda.zip"
-else
-    echo "  WARNING: Chunking Lambda not found!"
-    CHUNKING_ZIP=""
-fi
-
-# Whisper Lambda (Python)
-if [ -f /tmp/lambda/whisper-lambda.zip ]; then
-    WHISPER_ZIP="/tmp/lambda/whisper-lambda.zip"
-else
-    echo "  WARNING: Whisper Lambda not found!"
-    WHISPER_ZIP=""
-fi
+# Python Lambdas will be deployed from Docker images
+echo "  Python Lambdas will be deployed from Docker images"
 
 # Create/Update Lambda functions
 echo ""
@@ -141,36 +168,28 @@ if [ -n "$MERGE_ZIP" ]; then
         512
 fi
 
-# Chunking Lambda (Python)
-if [ -n "$CHUNKING_ZIP" ]; then
-    create_or_update_lambda \
-        "chunking-lambda" \
-        "python3.11" \
-        "lambda_handler.lambda_handler" \
-        "$CHUNKING_ZIP" \
-        "Variables={S3_BUCKET=podcast-audio,AWS_ENDPOINT_URL=http://localstack:4566}" \
-        900 \
-        1024
+# Chunking Lambda (Python - Docker image)
+create_or_update_lambda_from_image \
+    "chunking-lambda" \
+    "podcast-chunking-lambda:latest" \
+    "Variables={S3_BUCKET=podcast-audio,AWS_ENDPOINT_URL=http://localstack:4566,MONGODB_URI=mongodb://mongodb:27017/podcast_db}" \
+    900 \
+    1024
+
+# Whisper Lambda (Python - Docker image)
+# Use WHISPER_SERVICE_URL if set, otherwise use OpenAI API
+if [ -n "${WHISPER_SERVICE_URL}" ]; then
+    WHISPER_ENV="Variables={WHISPER_SERVICE_URL=${WHISPER_SERVICE_URL},S3_BUCKET=podcast-audio,AWS_ENDPOINT_URL=http://localstack:4566}"
+else
+    WHISPER_ENV="Variables={OPENAI_API_KEY=${OPENAI_API_KEY:-your-api-key},S3_BUCKET=podcast-audio,AWS_ENDPOINT_URL=http://localstack:4566}"
 fi
 
-# Whisper Lambda (Python)
-if [ -n "$WHISPER_ZIP" ]; then
-    # Use WHISPER_SERVICE_URL if set, otherwise use OpenAI API
-    if [ -n "${WHISPER_SERVICE_URL}" ]; then
-        WHISPER_ENV="Variables={WHISPER_SERVICE_URL=${WHISPER_SERVICE_URL},S3_BUCKET=podcast-audio,AWS_ENDPOINT_URL=http://localstack:4566}"
-    else
-        WHISPER_ENV="Variables={OPENAI_API_KEY=${OPENAI_API_KEY:-your-api-key},S3_BUCKET=podcast-audio,AWS_ENDPOINT_URL=http://localstack:4566}"
-    fi
-
-    create_or_update_lambda \
-        "whisper-lambda" \
-        "python3.11" \
-        "handler.lambda_handler" \
-        "$WHISPER_ZIP" \
-        "$WHISPER_ENV" \
-        900 \
-        2048
-fi
+create_or_update_lambda_from_image \
+    "whisper-lambda" \
+    "podcast-whisper-lambda:latest" \
+    "$WHISPER_ENV" \
+    900 \
+    2048
 
 # Create EventBridge rule
 echo ""

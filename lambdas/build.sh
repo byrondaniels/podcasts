@@ -64,10 +64,10 @@ build_go_lambdas() {
         .
 
     # Copy zip files to expected locations
-    cp "$BUILD_DIR/poll-lambda/poll-lambda.zip" "$PROJECT_ROOT/poll-lambda-go/poll-lambda-go.zip"
-    cp "$BUILD_DIR/poll-lambda/bootstrap" "$PROJECT_ROOT/poll-lambda-go/bootstrap"
-    cp "$BUILD_DIR/merge-lambda/merge-lambda.zip" "$PROJECT_ROOT/merge-transcript-lambda-go/merge-transcript-lambda-go.zip"
-    cp "$BUILD_DIR/merge-lambda/bootstrap" "$PROJECT_ROOT/merge-transcript-lambda-go/bootstrap"
+    cp "$BUILD_DIR/poll-lambda/package/poll-lambda.zip" "$PROJECT_ROOT/poll-lambda-go/poll-lambda-go.zip"
+    cp "$BUILD_DIR/poll-lambda/package/bootstrap" "$PROJECT_ROOT/poll-lambda-go/bootstrap"
+    cp "$BUILD_DIR/merge-lambda/package/merge-lambda.zip" "$PROJECT_ROOT/merge-transcript-lambda-go/merge-transcript-lambda-go.zip"
+    cp "$BUILD_DIR/merge-lambda/package/bootstrap" "$PROJECT_ROOT/merge-transcript-lambda-go/bootstrap"
 
     log_success "Go Lambda functions built successfully"
     ls -lh "$PROJECT_ROOT/poll-lambda-go/poll-lambda-go.zip"
@@ -85,8 +85,8 @@ build_poll_lambda() {
         --output type=local,dest="$BUILD_DIR/poll-lambda" \
         .
 
-    cp "$BUILD_DIR/poll-lambda/poll-lambda.zip" "$PROJECT_ROOT/poll-lambda-go/poll-lambda-go.zip"
-    cp "$BUILD_DIR/poll-lambda/bootstrap" "$PROJECT_ROOT/poll-lambda-go/bootstrap"
+    cp "$BUILD_DIR/poll-lambda/package/poll-lambda.zip" "$PROJECT_ROOT/poll-lambda-go/poll-lambda-go.zip"
+    cp "$BUILD_DIR/poll-lambda/package/bootstrap" "$PROJECT_ROOT/poll-lambda-go/bootstrap"
 
     log_success "Poll Lambda built: poll-lambda-go/poll-lambda-go.zip"
 }
@@ -102,34 +102,42 @@ build_merge_lambda() {
         --output type=local,dest="$BUILD_DIR/merge-lambda" \
         .
 
-    cp "$BUILD_DIR/merge-lambda/merge-lambda.zip" "$PROJECT_ROOT/merge-transcript-lambda-go/merge-transcript-lambda-go.zip"
-    cp "$BUILD_DIR/merge-lambda/bootstrap" "$PROJECT_ROOT/merge-transcript-lambda-go/bootstrap"
+    cp "$BUILD_DIR/merge-lambda/package/merge-lambda.zip" "$PROJECT_ROOT/merge-transcript-lambda-go/merge-transcript-lambda-go.zip"
+    cp "$BUILD_DIR/merge-lambda/package/bootstrap" "$PROJECT_ROOT/merge-transcript-lambda-go/bootstrap"
 
     log_success "Merge Lambda built: merge-transcript-lambda-go/merge-transcript-lambda-go.zip"
 }
 
-# Build Python Lambdas
+# Build Python Lambdas as Docker images
 build_python_lambdas() {
-    log_info "Building Python Lambda functions..."
+    log_info "Building Python Lambda Docker images..."
 
     cd "$PROJECT_ROOT"
 
-    # Build chunking lambda (includes ffmpeg)
-    build_chunking_lambda
+    # Build chunking lambda image
+    log_info "Building chunking Lambda image..."
+    docker build \
+        -f lambdas/Dockerfile.python \
+        --target chunking-lambda \
+        -t podcast-chunking-lambda:latest \
+        .
 
-    # Build whisper lambda
-    build_whisper_lambda
+    # Build whisper lambda image
+    log_info "Building whisper Lambda image..."
+    docker build \
+        -f lambdas/Dockerfile.python \
+        --target whisper-lambda \
+        -t podcast-whisper-lambda:latest \
+        .
 
-    log_success "Python Lambda functions built successfully"
+    log_success "Python Lambda Docker images built successfully"
+    docker images | grep podcast-.*-lambda
 }
 
 build_chunking_lambda() {
-    log_info "Building chunking Lambda (Python with ffmpeg)..."
+    log_info "Building chunking Lambda Docker image..."
 
     cd "$PROJECT_ROOT"
-
-    # Create a temporary build context with just what we need
-    mkdir -p "$BUILD_DIR/chunking-context"
 
     # Build the chunking lambda image
     docker build \
@@ -138,23 +146,12 @@ build_chunking_lambda() {
         -t podcast-chunking-lambda:latest \
         .
 
-    # Extract the package from the container
-    docker run --rm \
-        -v "$BUILD_DIR:/output" \
-        --entrypoint /bin/bash \
-        podcast-chunking-lambda:latest \
-        -c "cd /var/task && zip -r /output/chunking-lambda.zip . && \
-            mkdir -p /output/chunking-layer && \
-            cp -r /opt/bin /output/chunking-layer/ 2>/dev/null || true && \
-            cp -r /opt/python /output/chunking-layer/ 2>/dev/null || true"
-
-    cp "$BUILD_DIR/chunking-lambda.zip" "$PROJECT_ROOT/chunking-lambda/chunking-lambda.zip"
-
-    log_success "Chunking Lambda built: chunking-lambda/chunking-lambda.zip"
+    log_success "Chunking Lambda image built: podcast-chunking-lambda:latest"
+    docker images | grep podcast-chunking-lambda
 }
 
 build_whisper_lambda() {
-    log_info "Building whisper Lambda (Python)..."
+    log_info "Building whisper Lambda Docker image..."
 
     cd "$PROJECT_ROOT"
 
@@ -165,16 +162,8 @@ build_whisper_lambda() {
         -t podcast-whisper-lambda:latest \
         .
 
-    # Extract the package from the container
-    docker run --rm \
-        -v "$BUILD_DIR:/output" \
-        --entrypoint /bin/bash \
-        podcast-whisper-lambda:latest \
-        -c "cd /var/task && zip -r /output/whisper-lambda.zip ."
-
-    cp "$BUILD_DIR/whisper-lambda.zip" "$PROJECT_ROOT/whisper-lambda/whisper-lambda.zip"
-
-    log_success "Whisper Lambda built: whisper-lambda/whisper-lambda.zip"
+    log_success "Whisper Lambda image built: podcast-whisper-lambda:latest"
+    docker images | grep podcast-whisper-lambda
 }
 
 # Build Lambda layers
