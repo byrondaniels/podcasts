@@ -4,7 +4,7 @@ import { episodeService } from '../services/episodeService';
 import { podcastService } from '../services/podcastService';
 import { formatDate, formatDuration } from '../utils';
 import { usePagination } from '../hooks';
-import { Button, EmptyState, StatusBadge, Icon, Pagination } from './shared';
+import { Button, EmptyState, StatusBadge, Icon, Pagination, ProcessingProgress } from './shared';
 import { TranscriptModal } from './TranscriptModal';
 import type { Episode, TranscriptStatus } from '../types/episode';
 import type { Podcast } from '../types/podcast';
@@ -28,6 +28,7 @@ export const EpisodeTranscripts = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isPolling, setIsPolling] = useState(false);
   const [pollMessage, setPollMessage] = useState<string | null>(null);
+  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(false);
 
   const pagination = usePagination({
     totalItems: total,
@@ -80,6 +81,23 @@ export const EpisodeTranscripts = () => {
   useEffect(() => {
     fetchEpisodes();
   }, [fetchEpisodes]);
+
+  // Auto-refresh when there are processing episodes
+  useEffect(() => {
+    const hasProcessingEpisodes = episodes.some(
+      (ep) => ep.transcript_status === 'processing'
+    );
+
+    setAutoRefreshEnabled(hasProcessingEpisodes);
+
+    if (hasProcessingEpisodes) {
+      const intervalId = setInterval(() => {
+        fetchEpisodes();
+      }, 3000); // Refresh every 3 seconds
+
+      return () => clearInterval(intervalId);
+    }
+  }, [episodes, fetchEpisodes]);
 
   useEffect(() => {
     if (podcastIdFromUrl) {
@@ -211,8 +229,9 @@ export const EpisodeTranscripts = () => {
             className="filter-select"
           >
             <option value="all">All Statuses</option>
-            <option value="completed">Completed</option>
+            <option value="pending">Pending</option>
             <option value="processing">Processing</option>
+            <option value="completed">Completed</option>
             <option value="failed">Failed</option>
           </select>
         </div>
@@ -239,6 +258,12 @@ export const EpisodeTranscripts = () => {
         {!isLoading && (
           <div className="results-count">
             {total} {total === 1 ? 'episode' : 'episodes'}
+            {autoRefreshEnabled && (
+              <span className="auto-refresh-indicator" title="Auto-refreshing">
+                <div className="auto-refresh-dot" />
+                Live
+              </span>
+            )}
           </div>
         )}
 
@@ -307,7 +332,12 @@ export const EpisodeTranscripts = () => {
                     </div>
 
                     <div className="episode-row-actions">
-                      <StatusBadge status={episode.transcript_status} />
+                      <div className="episode-status-container">
+                        <StatusBadge status={episode.transcript_status} />
+                        {episode.transcript_status === 'processing' && episode.processing_step && (
+                          <ProcessingProgress step={episode.processing_step} />
+                        )}
+                      </div>
                       {episode.transcript_status === 'completed' && (
                         <Button
                           onClick={() => handleViewTranscript(episode)}

@@ -83,6 +83,7 @@ class EpisodeResponse(BaseModel):
     duration_minutes: Optional[int] = Field(None, description="Episode duration in minutes")
     s3_audio_key: Optional[str] = Field(None, description="S3 key for stored audio")
     transcript_status: TranscriptStatus = Field(..., description="Transcript processing status")
+    processing_step: Optional[str] = Field(None, description="Current processing step (downloading, chunking, transcribing, merging, completed)")
     transcript_s3_key: Optional[str] = Field(None, description="S3 key for transcript")
     discovered_at: datetime = Field(..., description="When episode was discovered")
     processed_at: Optional[datetime] = Field(None, description="When processing completed")
