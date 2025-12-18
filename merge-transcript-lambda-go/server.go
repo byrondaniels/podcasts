@@ -1,4 +1,4 @@
-//go:build !http
+//go:build http
 
 package main
 
@@ -9,13 +9,14 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"os"
 	"sort"
 	"strings"
 	"time"
 
-	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"go.mongodb.org/mongo-driver/bson"
@@ -28,7 +29,6 @@ const (
 )
 
 var (
-	// Global clients (reused across Lambda invocations)
 	mongoClient *mongo.Client
 	s3Client    *s3.S3
 )
@@ -63,11 +63,9 @@ type LambdaResponse struct {
 }
 
 func init() {
-	// Skip initialization during tests
 	if os.Getenv("SKIP_INIT") == "true" {
 		return
 	}
-	// Initialize global clients once
 	initMongoClient()
 	initS3Client()
 }
@@ -87,7 +85,6 @@ func initMongoClient() {
 		log.Fatalf("Failed to connect to MongoDB: %v", err)
 	}
 
-	// Ping to verify connection
 	if err = mongoClient.Ping(ctx, nil); err != nil {
 		log.Fatalf("Failed to ping MongoDB: %v", err)
 	}
@@ -96,13 +93,27 @@ func initMongoClient() {
 }
 
 func initS3Client() {
-	sess := session.Must(session.NewSession(&aws.Config{
+	awsConfig := &aws.Config{
 		Region: aws.String(os.Getenv("AWS_REGION")),
-	}))
+	}
+
+	// Use custom endpoint for Minio/LocalStack
+	if endpoint := os.Getenv("AWS_ENDPOINT_URL"); endpoint != "" {
+		awsConfig.Endpoint = aws.String(endpoint)
+		awsConfig.S3ForcePathStyle = aws.Bool(true)
+	}
+
+	// Use explicit credentials if provided (for Minio)
+	if accessKey := os.Getenv("AWS_ACCESS_KEY_ID"); accessKey != "" {
+		secretKey := os.Getenv("AWS_SECRET_ACCESS_KEY")
+		awsConfig.Credentials = credentials.NewStaticCredentials(accessKey, secretKey, "")
+	}
+
+	sess := session.Must(session.NewSession(awsConfig))
 	s3Client = s3.New(sess)
+	log.Printf("S3 client initialized with endpoint: %s", os.Getenv("AWS_ENDPOINT_URL"))
 }
 
-// downloadTranscriptFromS3 retrieves and parses a transcript chunk
 func downloadTranscriptFromS3(ctx context.Context, bucket, key string) (*TranscriptData, error) {
 	log.Printf("Downloading s3://%s/%s", bucket, key)
 
@@ -129,7 +140,6 @@ func downloadTranscriptFromS3(ctx context.Context, bucket, key string) (*Transcr
 	return &transcriptData, nil
 }
 
-// uploadToS3 uploads content to S3
 func uploadToS3(ctx context.Context, bucket, key, content, contentType string) error {
 	log.Printf("Uploading to s3://%s/%s", bucket, key)
 
@@ -148,7 +158,6 @@ func uploadToS3(ctx context.Context, bucket, key, content, contentType string) e
 	return nil
 }
 
-// formatTimestamp converts seconds to [HH:MM:SS] format
 func formatTimestamp(seconds int) string {
 	hours := seconds / 3600
 	minutes := (seconds % 3600) / 60
@@ -156,21 +165,18 @@ func formatTimestamp(seconds int) string {
 	return fmt.Sprintf("[%02d:%02d:%02d]", hours, minutes, secs)
 }
 
-// mergeTranscripts combines transcript chunks into a single formatted transcript
 func mergeTranscripts(ctx context.Context, transcripts []TranscriptChunk, s3Bucket string, addTimestamps bool) (string, int, error) {
-	// Sort transcripts by chunk index
 	sort.Slice(transcripts, func(i, j int) bool {
 		return transcripts[i].ChunkIndex < transcripts[j].ChunkIndex
 	})
 
 	var builder strings.Builder
 	totalWords := 0
-	lastTimestampSeconds := -timestampIntervalSeconds // Force timestamp at the beginning
+	lastTimestampSeconds := -timestampIntervalSeconds
 
 	for _, chunk := range transcripts {
 		log.Printf("Processing chunk %d from %s", chunk.ChunkIndex, chunk.TranscriptS3Key)
 
-		// Download and parse transcript chunk
 		transcriptData, err := downloadTranscriptFromS3(ctx, s3Bucket, chunk.TranscriptS3Key)
 		if err != nil {
 			return "", 0, fmt.Errorf("chunk %d: %w", chunk.ChunkIndex, err)
@@ -182,7 +188,6 @@ func mergeTranscripts(ctx context.Context, transcripts []TranscriptChunk, s3Buck
 			continue
 		}
 
-		// Add timestamp header if 5 minutes have passed
 		if addTimestamps && (chunk.StartTimeSeconds-lastTimestampSeconds) >= timestampIntervalSeconds {
 			builder.WriteString("\n")
 			builder.WriteString(formatTimestamp(chunk.StartTimeSeconds))
@@ -190,13 +195,8 @@ func mergeTranscripts(ctx context.Context, transcripts []TranscriptChunk, s3Buck
 			lastTimestampSeconds = chunk.StartTimeSeconds
 		}
 
-		// Add the chunk text
 		builder.WriteString(text)
-
-		// Add paragraph break between chunks
 		builder.WriteString("\n\n")
-
-		// Count words (simple split by whitespace)
 		totalWords += len(strings.Fields(text))
 	}
 
@@ -206,9 +206,8 @@ func mergeTranscripts(ctx context.Context, transcripts []TranscriptChunk, s3Buck
 	return mergedText, totalWords, nil
 }
 
-// updateEpisodeInMongoDB updates the episode document with completion status
 func updateEpisodeInMongoDB(ctx context.Context, episodeID, transcriptS3Key string) error {
-	db := mongoClient.Database("")
+	db := mongoClient.Database("podcast_db")
 	episodesCollection := db.Collection("episodes")
 
 	result, err := episodesCollection.UpdateOne(
@@ -216,7 +215,7 @@ func updateEpisodeInMongoDB(ctx context.Context, episodeID, transcriptS3Key stri
 		bson.M{"episode_id": episodeID},
 		bson.M{
 			"$set": bson.M{
-				"status":            "completed",
+				"transcript_status": "completed",
 				"transcript_s3_key": transcriptS3Key,
 				"processed_at":      time.Now().UTC(),
 			},
@@ -237,9 +236,8 @@ func updateEpisodeInMongoDB(ctx context.Context, episodeID, transcriptS3Key stri
 	return nil
 }
 
-// updateEpisodeError updates the episode with error status
 func updateEpisodeError(ctx context.Context, episodeID, errorMessage string) {
-	db := mongoClient.Database("")
+	db := mongoClient.Database("podcast_db")
 	episodesCollection := db.Collection("episodes")
 
 	_, err := episodesCollection.UpdateOne(
@@ -247,9 +245,9 @@ func updateEpisodeError(ctx context.Context, episodeID, errorMessage string) {
 		bson.M{"episode_id": episodeID},
 		bson.M{
 			"$set": bson.M{
-				"status":        "error",
-				"error_message": errorMessage,
-				"processed_at":  time.Now().UTC(),
+				"transcript_status": "failed",
+				"error_message":     errorMessage,
+				"processed_at":      time.Now().UTC(),
 			},
 		},
 	)
@@ -259,17 +257,15 @@ func updateEpisodeError(ctx context.Context, episodeID, errorMessage string) {
 	}
 }
 
-// HandleRequest is the Lambda handler
-func HandleRequest(ctx context.Context, event LambdaEvent) (LambdaResponse, error) {
+func handleRequest(ctx context.Context, event LambdaEvent) LambdaResponse {
 	log.Printf("Received event: %+v", event)
 
-	// Validate required parameters
 	if event.EpisodeID == "" {
 		return LambdaResponse{
 			EpisodeID:    event.EpisodeID,
 			Status:       "error",
 			ErrorMessage: "Missing required parameter: episode_id",
-		}, nil
+		}
 	}
 
 	if len(event.Transcripts) == 0 {
@@ -277,7 +273,7 @@ func HandleRequest(ctx context.Context, event LambdaEvent) (LambdaResponse, erro
 			EpisodeID:    event.EpisodeID,
 			Status:       "error",
 			ErrorMessage: "No transcripts provided",
-		}, nil
+		}
 	}
 
 	s3Bucket := event.S3Bucket
@@ -290,15 +286,13 @@ func HandleRequest(ctx context.Context, event LambdaEvent) (LambdaResponse, erro
 			EpisodeID:    event.EpisodeID,
 			Status:       "error",
 			ErrorMessage: "S3 bucket not specified in event or environment variables",
-		}, nil
+		}
 	}
 
-	// Validate chunk count
 	if event.TotalChunks > 0 && len(event.Transcripts) != event.TotalChunks {
 		log.Printf("Warning: Expected %d chunks but received %d", event.TotalChunks, len(event.Transcripts))
 	}
 
-	// Check for missing chunks
 	chunkIndices := make(map[int]bool)
 	for _, chunk := range event.Transcripts {
 		chunkIndices[chunk.ChunkIndex] = true
@@ -312,11 +306,10 @@ func HandleRequest(ctx context.Context, event LambdaEvent) (LambdaResponse, erro
 				EpisodeID:    event.EpisodeID,
 				Status:       "error",
 				ErrorMessage: errorMsg,
-			}, nil
+			}
 		}
 	}
 
-	// Merge transcripts
 	mergedText, totalWords, err := mergeTranscripts(ctx, event.Transcripts, s3Bucket, true)
 	if err != nil {
 		errorMessage := fmt.Sprintf("Error merging transcripts: %v", err)
@@ -326,10 +319,9 @@ func HandleRequest(ctx context.Context, event LambdaEvent) (LambdaResponse, erro
 			EpisodeID:    event.EpisodeID,
 			Status:       "error",
 			ErrorMessage: errorMessage,
-		}, nil
+		}
 	}
 
-	// Upload final transcript to S3
 	finalTranscriptKey := fmt.Sprintf("transcripts/%s/final.txt", event.EpisodeID)
 	if err := uploadToS3(ctx, s3Bucket, finalTranscriptKey, mergedText, "text/plain"); err != nil {
 		errorMessage := fmt.Sprintf("Failed to upload final transcript: %v", err)
@@ -339,14 +331,12 @@ func HandleRequest(ctx context.Context, event LambdaEvent) (LambdaResponse, erro
 			EpisodeID:    event.EpisodeID,
 			Status:       "error",
 			ErrorMessage: errorMessage,
-		}, nil
+		}
 	}
 
-	// Update MongoDB
 	if err := updateEpisodeInMongoDB(ctx, event.EpisodeID, finalTranscriptKey); err != nil {
 		errorMessage := fmt.Sprintf("Failed to update MongoDB: %v", err)
 		log.Println(errorMessage)
-		// Don't mark as error since transcript was successfully uploaded
 		log.Println("Warning: Transcript uploaded but MongoDB update failed")
 	}
 
@@ -357,9 +347,71 @@ func HandleRequest(ctx context.Context, event LambdaEvent) (LambdaResponse, erro
 		TranscriptS3Key: finalTranscriptKey,
 		TotalWords:      totalWords,
 		Status:          "completed",
-	}, nil
+	}
+}
+
+func healthHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"status":  "healthy",
+		"service": "merge-lambda",
+	})
+}
+
+func invokeHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		sendError(w, "Failed to read request body", http.StatusBadRequest)
+		return
+	}
+	defer r.Body.Close()
+
+	log.Printf("Received invoke request: %s", string(body))
+
+	var event LambdaEvent
+	if err := json.Unmarshal(body, &event); err != nil {
+		sendError(w, fmt.Sprintf("Failed to parse request: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	response := handleRequest(ctx, event)
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.Printf("Failed to encode response: %v", err)
+		sendError(w, "Failed to encode response", http.StatusInternalServerError)
+	}
+}
+
+func sendError(w http.ResponseWriter, message string, statusCode int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"statusCode": statusCode,
+		"message":    message,
+		"error":      true,
+	})
 }
 
 func main() {
-	lambda.Start(HandleRequest)
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8004"
+	}
+
+	http.HandleFunc("/health", healthHandler)
+	http.HandleFunc("/invoke", invokeHandler)
+
+	log.Printf("Starting merge-lambda HTTP server on port %s", port)
+	if err := http.ListenAndServe(":"+port, nil); err != nil {
+		log.Fatalf("Failed to start server: %v", err)
+	}
 }

@@ -17,8 +17,17 @@ class Settings(BaseSettings):
     aws_endpoint_url: str = ""  # For LocalStack in dev
     s3_bucket_name: str = "podcast-transcripts"
 
-    # AWS Step Functions Configuration
+    # AWS Step Functions Configuration (deprecated - using Lambda HTTP services)
     step_function_arn: str = ""
+
+    # Lambda HTTP Service URLs (for local Docker orchestration)
+    poll_lambda_url: str = "http://poll-lambda:8001"
+    chunking_lambda_url: str = "http://chunking-lambda:8002"
+    whisper_lambda_url: str = "http://whisper-lambda:8003"
+    merge_lambda_url: str = "http://merge-lambda:8004"
+
+    # S3 Audio Bucket (separate from transcripts bucket)
+    s3_audio_bucket: str = "podcast-audio"
 
     # Transcription Configuration
     openai_api_key: str = ""

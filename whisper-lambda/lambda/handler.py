@@ -14,8 +14,26 @@ logger.setLevel(logging.INFO)
 MAX_RETRIES = 3
 INITIAL_RETRY_DELAY = 1  # seconds
 
+
+def get_s3_client():
+    """Create S3 client with proper configuration for Minio/LocalStack."""
+    endpoint_url = os.environ.get('AWS_ENDPOINT_URL')
+
+    client_kwargs = {
+        'region_name': os.environ.get('AWS_REGION', 'us-east-1')
+    }
+
+    if endpoint_url:
+        client_kwargs['endpoint_url'] = endpoint_url
+        # For Minio/LocalStack, we need to use path-style addressing
+        client_kwargs['config'] = boto3.session.Config(s3={'addressing_style': 'path'})
+        logger.info(f"Using S3 endpoint: {endpoint_url}")
+
+    return boto3.client('s3', **client_kwargs)
+
+
 # Initialize clients
-s3_client = boto3.client('s3')
+s3_client = get_s3_client()
 
 # Check which Whisper service to use
 WHISPER_SERVICE_URL = os.environ.get('WHISPER_SERVICE_URL')
