@@ -40,8 +40,8 @@ docker-compose.yml
 # Server directory (for frontend build)
 server
 
-# Lambda functions
-*-lambda
+# Lambda functions (keep Lambda source directories for Python Lambda builds)
+# *-lambda
 
 # Documentation
 README.md

@@ -21,18 +21,22 @@ class S3Service:
         if self._client is None:
             try:
                 # Initialize boto3 S3 client
-                if settings.aws_access_key_id and settings.aws_secret_access_key:
-                    self._client = boto3.client(
-                        's3',
-                        aws_access_key_id=settings.aws_access_key_id,
-                        aws_secret_access_key=settings.aws_secret_access_key,
-                        region_name=settings.aws_region
-                    )
-                else:
-                    # Use default credentials (IAM role, environment variables, etc.)
-                    self._client = boto3.client('s3', region_name=settings.aws_region)
+                client_kwargs = {
+                    'region_name': settings.aws_region
+                }
 
-                logger.info("S3 client initialized successfully")
+                # Add endpoint URL if configured (for Minio/LocalStack)
+                if settings.aws_endpoint_url:
+                    client_kwargs['endpoint_url'] = settings.aws_endpoint_url
+
+                # Add credentials if provided
+                if settings.aws_access_key_id and settings.aws_secret_access_key:
+                    client_kwargs['aws_access_key_id'] = settings.aws_access_key_id
+                    client_kwargs['aws_secret_access_key'] = settings.aws_secret_access_key
+
+                self._client = boto3.client('s3', **client_kwargs)
+
+                logger.info(f"S3 client initialized successfully (endpoint: {settings.aws_endpoint_url or 'default AWS'})")
             except Exception as e:
                 logger.error(f"Failed to initialize S3 client: {e}")
                 raise
