@@ -11,13 +11,13 @@ import httpx
 from pymongo import MongoClient
 
 from app.config import settings
-from app.database.mongodb import get_database
+from app.database.mongodb import MongoDB
 
 logger = logging.getLogger(__name__)
 
 # Timeout settings
 CHUNKING_TIMEOUT = 900.0  # 15 minutes for downloading and chunking
-WHISPER_TIMEOUT = 600.0   # 10 minutes per chunk transcription
+WHISPER_TIMEOUT = 1200.0  # 20 minutes per chunk transcription (for CPU processing)
 MERGE_TIMEOUT = 300.0     # 5 minutes for merging
 
 
@@ -49,7 +49,7 @@ class OrchestrationService:
         """
         logger.info(f"Starting transcription workflow for episode {episode_id}")
 
-        db = get_database()
+        db = MongoDB.get_db()
         episodes_collection = db.episodes
 
         try:
@@ -61,6 +61,10 @@ class OrchestrationService:
 
             # Step 1: Download and chunk audio
             logger.info(f"Step 1: Chunking audio for episode {episode_id}")
+            episodes_collection.update_one(
+                {"episode_id": episode_id},
+                {"$set": {"processing_step": "chunking", "updated_at": datetime.utcnow()}}
+            )
             chunk_result = await self._call_chunking_lambda(episode_id, audio_url)
 
             if "error" in chunk_result:
@@ -76,6 +80,10 @@ class OrchestrationService:
 
             # Step 2: Transcribe each chunk in parallel (with concurrency limit)
             logger.info(f"Step 2: Transcribing {total_chunks} chunks for episode {episode_id}")
+            episodes_collection.update_one(
+                {"episode_id": episode_id},
+                {"$set": {"processing_step": "transcribing", "updated_at": datetime.utcnow()}}
+            )
             transcription_results = await self._transcribe_chunks_parallel(
                 episode_id,
                 chunks,
@@ -92,6 +100,10 @@ class OrchestrationService:
 
             # Step 3: Merge transcripts
             logger.info(f"Step 3: Merging transcripts for episode {episode_id}")
+            episodes_collection.update_one(
+                {"episode_id": episode_id},
+                {"$set": {"processing_step": "merging", "updated_at": datetime.utcnow()}}
+            )
             merge_result = await self._call_merge_lambda(
                 episode_id,
                 total_chunks,
@@ -137,6 +149,7 @@ class OrchestrationService:
                 {
                     "$set": {
                         "transcript_status": "failed",
+                        "processing_step": None,
                         "error_message": error_message,
                         "updated_at": datetime.utcnow()
                     }

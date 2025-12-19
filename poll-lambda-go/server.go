@@ -133,7 +133,7 @@ func extractAudioURL(item *gofeed.Item) string {
 
 func processPodcast(ctx context.Context, podcast Podcast, db *mongo.Database) PodcastResult {
 	result := PodcastResult{
-		PodcastID:    podcast.ID.Hex(),
+		PodcastID:    podcast.PodcastID,
 		PodcastTitle: podcast.Title,
 		NewEpisodes:  0,
 		Episodes:     []NewEpisode{},
@@ -205,7 +205,7 @@ func processPodcast(ctx context.Context, podcast Podcast, db *mongo.Database) Po
 		episode := Episode{
 			ID:               episodeID,
 			EpisodeID:        episodeID,
-			PodcastID:        podcast.ID.Hex(),
+			PodcastID:        podcast.PodcastID,
 			Title:            item.Title,
 			Description:      item.Description,
 			AudioURL:         audioURL,
@@ -233,7 +233,7 @@ func processPodcast(ctx context.Context, podcast Podcast, db *mongo.Database) Po
 			EpisodeID: episodeID,
 			Title:     item.Title,
 			AudioURL:  audioURL,
-			PodcastID: podcast.ID.Hex(),
+			PodcastID: podcast.PodcastID,
 		})
 		// NOTE: In HTTP mode, we don't trigger Step Functions
 		// The backend orchestration handles transcription workflow

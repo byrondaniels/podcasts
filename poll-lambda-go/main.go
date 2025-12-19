@@ -240,7 +240,7 @@ func processPodcast(ctx context.Context, podcast Podcast, db *mongo.Database) Po
 		episode := Episode{
 			ID:               episodeID,
 			EpisodeID:        episodeID,
-			PodcastID:        podcast.ID.Hex(),
+			PodcastID:        podcast.PodcastID,
 			Title:            item.Title,
 			Description:      item.Description,
 			AudioURL:         audioURL,

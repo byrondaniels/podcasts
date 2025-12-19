@@ -345,6 +345,6 @@ def _format_episode_response(episode_doc: dict) -> EpisodeResponse:
         transcript_status=episode_doc.get("transcript_status", "pending"),
         processing_step=episode_doc.get("processing_step"),
         transcript_s3_key=episode_doc.get("transcript_s3_key"),
-        discovered_at=episode_doc["discovered_at"],
+        discovered_at=episode_doc.get("discovered_at") or episode_doc.get("created_at"),
         processed_at=episode_doc.get("processed_at"),
     )
