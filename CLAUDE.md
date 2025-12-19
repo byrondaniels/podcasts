@@ -13,7 +13,7 @@ A full-stack podcast management application that automatically transcribes podca
 - **Backend**: Python FastAPI server (port 8000)
 - **MongoDB**: Document database (port 27017)
 - **LocalStack**: AWS service emulation - S3, Lambda, Step Functions (port 4566)
-- **Whisper Service**: Local ASR service for development (port 9000)
+- **Whisper Service**: Local ASR service running on host machine (port 9000) - runs natively for better performance on Apple Silicon
 
 ### Production Environment (AWS via Terraform)
 - **S3 Buckets**: `podcast-audio` (raw audio, chunks), `podcast-transcripts` (final transcripts)
@@ -38,19 +38,28 @@ A full-stack podcast management application that automatically transcribes podca
 
 ### Initial Setup
 ```bash
-make setup              # Copy .env.example to .env (then edit OPENAI_API_KEY)
+make setup              # Copy .env.example to .env (OPENAI_API_KEY optional for dev)
+./scripts/run-whisper-local.sh  # Start local Whisper service (run in separate terminal)
 make up                 # Start all Docker services
 make init-db            # Initialize MongoDB schemas and indexes
 ```
 
+**Note:** The Whisper service now runs locally on your machine (not in Docker) for optimal performance on Apple Silicon. Use `medium.en` or `large-v3` models for best quality on M4 Max.
+
 ### Daily Development
 ```bash
+# Terminal 1: Start local Whisper service
+./scripts/run-whisper-local.sh medium.en  # Use medium.en for better quality
+
+# Terminal 2: Start Docker services
 make dev                # Start services and follow logs
+
+# Other useful commands
 make logs               # View all service logs
 make logs-backend       # View backend logs only
 make logs-frontend      # View frontend logs only
 make ps                 # Show service status
-make health             # Check health of all services
+make health             # Check health of all services (including Whisper)
 ```
 
 ### Database Operations
@@ -167,14 +176,13 @@ Located in `terraform/modules/step-functions/state-machine-definition.json`:
 - **Error Handling**: 3 retries with exponential backoff, catches all errors
 
 ### Environment Variables (.env)
-Required:
-- `OPENAI_API_KEY` - For Whisper API transcription
-
-Optional (have defaults):
+Optional (all have defaults for dev):
 - `VITE_API_URL` - Frontend API URL (default: http://localhost:8000)
 - `MONGODB_URL` - MongoDB connection string (default: mongodb://localhost:27017)
 - `MONGODB_DB_NAME` - Database name (default: podcast_db)
 - `S3_BUCKET_NAME` - S3 bucket for audio (default: podcast-audio)
+- `WHISPER_SERVICE_URL` - Local Whisper service URL (default: http://host.docker.internal:9000)
+- `OPENAI_API_KEY` - For production Whisper API transcription (not needed for local dev)
 - `LOG_LEVEL` - Logging level (default: INFO)
 - `AWS_ENDPOINT_URL` - LocalStack endpoint (default: http://localstack:4566)
 
@@ -183,14 +191,35 @@ Optional (have defaults):
 - **Backend tests**: Run via `pytest` in `server/` directory
 - **Frontend linting**: ESLint for TypeScript/React
 
+### Local Whisper Service (Dev Only)
+For development, Whisper runs **natively on your host machine** instead of in Docker for significantly better performance on Apple Silicon.
+
+**Quick Start:**
+```bash
+# In a separate terminal, start Whisper service
+./scripts/run-whisper-local.sh medium.en
+
+# Available models: tiny, tiny.en, base, base.en, small, small.en, medium, medium.en, large-v3
+# Recommended for M4 Max: medium.en or large-v3
+```
+
+**Features:**
+- Automatic virtual environment setup at `~/.whisper-service-venv`
+- Model caching at `~/.cache/whisper`
+- Optimized for Apple Silicon (M1/M2/M3/M4)
+- Simple HTTP API compatible with OpenAI Whisper format
+
+**See:** `scripts/README.md` for detailed documentation
+
 ### Important Notes
-1. **Backend**: Python FastAPI backend serves both the production API and dev bulk transcribe endpoints.
-2. **Lambda Languages**: RSS poller and merge Lambda are Go; chunking and Whisper Lambdas are Python.
-3. **Dual Environments**: LocalStack for local dev, real AWS services for production via Terraform.
-4. **S3 Lifecycle**: Audio chunks auto-delete after 7 days to save storage costs.
-5. **Concurrency Limits**: Whisper Lambda has reserved concurrency of 10 to manage OpenAI API rate limits.
-6. **Secrets Management**: Local dev uses .env file; production uses SSM Parameter Store (never env vars).
-7. **Bulk Transcribe**: Dev-only feature at `/api/dev/bulk-transcribe` for testing full podcast transcription locally.
+1. **Local Whisper**: For dev, Whisper runs on your host machine (not Docker) for better performance. Docker containers connect via `host.docker.internal:9000`.
+2. **Backend**: Python FastAPI backend serves both the production API and dev bulk transcribe endpoints.
+3. **Lambda Languages**: RSS poller and merge Lambda are Go; chunking and Whisper Lambdas are Python.
+4. **Dual Environments**: LocalStack for local dev, real AWS services for production via Terraform.
+5. **S3 Lifecycle**: Audio chunks auto-delete after 7 days to save storage costs.
+6. **Concurrency Limits**: Whisper Lambda has reserved concurrency of 10 to manage OpenAI API rate limits.
+7. **Secrets Management**: Local dev uses .env file; production uses SSM Parameter Store (never env vars).
+8. **Bulk Transcribe**: Dev-only feature at `/api/dev/bulk-transcribe` for testing full podcast transcription locally.
 
 ### Code Structure
 ```

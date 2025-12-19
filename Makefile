@@ -37,6 +37,7 @@ up: ## Start all services
 	@echo "  MongoDB:       $(GREEN)mongodb://localhost:27017$(NC)"
 	@echo "  Minio Console: $(GREEN)http://localhost:9001$(NC)"
 	@echo "  Minio S3 API:  $(GREEN)http://localhost:9002$(NC)"
+	@echo "  Whisper (Local): $(GREEN)http://localhost:9000$(NC) $(YELLOW)(run ./scripts/run-whisper-local.sh)$(NC)"
 	@echo ""
 	@echo "$(BLUE)Lambda Services:$(NC)"
 	@echo "  Poll Lambda:     $(GREEN)http://localhost:8001$(NC)"
@@ -109,6 +110,9 @@ health: ## Check health of all services
 	@echo "$(YELLOW)Minio:$(NC)"
 	@curl -sf http://localhost:9002/minio/health/live > /dev/null && echo "$(GREEN)✓ Healthy$(NC)" || echo "$(YELLOW)✗ Unhealthy$(NC)"
 	@echo ""
+	@echo "$(YELLOW)Whisper (Local):$(NC)"
+	@curl -sf http://localhost:9000/ > /dev/null && echo "$(GREEN)✓ Healthy (run ./scripts/run-whisper-local.sh if not running)$(NC)" || echo "$(YELLOW)✗ Not Running - Start with: ./scripts/run-whisper-local.sh$(NC)"
+	@echo ""
 	@echo "$(YELLOW)Backend API:$(NC)"
 	@curl -sf http://localhost:8000/health > /dev/null && echo "$(GREEN)✓ Healthy$(NC)" || echo "$(YELLOW)✗ Unhealthy$(NC)"
 	@echo ""
@@ -171,9 +175,10 @@ install: setup up ## Full installation - setup and start services
 	@echo "$(GREEN)✓ Installation complete!$(NC)"
 	@echo ""
 	@echo "$(BLUE)Next steps:$(NC)"
-	@echo "  1. Edit .env and add your OPENAI_API_KEY"
-	@echo "  2. Run 'make init-db' to initialize the database"
-	@echo "  3. Open http://localhost:3017 in your browser"
+	@echo "  1. Edit .env and add your OPENAI_API_KEY (optional for dev)"
+	@echo "  2. Run './scripts/run-whisper-local.sh' to start local Whisper service"
+	@echo "  3. Run 'make init-db' to initialize the database"
+	@echo "  4. Open http://localhost:3017 in your browser"
 
 dev: up logs ## Start services and follow logs
 
