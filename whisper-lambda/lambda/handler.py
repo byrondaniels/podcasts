@@ -95,7 +95,18 @@ def transcribe_with_local_whisper(audio_path):
         )
         response.raise_for_status()
 
-    result = response.json()
+    logger.info(f"Whisper response status: {response.status_code}, content-type: {response.headers.get('content-type')}")
+    logger.info(f"Whisper response length: {len(response.text)} chars, first 500: {response.text[:500]}")
+
+    # Handle both JSON and plain text responses
+    content_type = response.headers.get('content-type', '')
+    if 'application/json' in content_type:
+        result = response.json()
+    else:
+        # Plain text response - wrap it in expected format
+        result = {'text': response.text}
+        logger.info("Received plain text response, wrapped in JSON format")
+
     logger.info("Local Whisper transcription successful")
 
     # Convert to OpenAI-compatible format

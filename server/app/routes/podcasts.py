@@ -2,7 +2,7 @@
 import logging
 import uuid
 from datetime import datetime
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, Depends, status, BackgroundTasks
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pymongo.errors import DuplicateKeyError
 
@@ -14,6 +14,7 @@ from app.models import (
     SuccessResponse,
 )
 from app.services import rss_parser, lambda_service
+from app.services.orchestration_service import get_orchestration_service
 
 logger = logging.getLogger(__name__)
 
@@ -219,6 +220,7 @@ async def unsubscribe_from_podcast(
 @router.post("/{podcast_id}/poll", response_model=SuccessResponse)
 async def poll_podcast(
     podcast_id: str,
+    background_tasks: BackgroundTasks,
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
     """
@@ -275,6 +277,36 @@ async def poll_podcast(
                 message += f" Warnings: {'; '.join(errors[:3])}"  # Show first 3 errors
 
             logger.info(f"Manual poll completed for {podcast_id}: {new_episodes} new episodes")
+
+            # Trigger transcription for all new pending episodes
+            if new_episodes > 0:
+                # Get all pending episodes for this podcast
+                pending_episodes = await db.episodes.find({
+                    "podcast_id": podcast_id,
+                    "transcript_status": "pending"
+                }).to_list(length=None)
+
+                # Start transcription for each episode in background
+                for episode in pending_episodes:
+                    episode_id = episode.get("episode_id")
+                    audio_url = episode.get("audio_url")
+
+                    if episode_id and audio_url:
+                        # Create a function that starts transcription
+                        def create_transcription_task(ep_id: str, aud_url: str):
+                            async def run():
+                                try:
+                                    orchestration_service = get_orchestration_service()
+                                    await orchestration_service.transcribe_episode(
+                                        episode_id=ep_id,
+                                        audio_url=aud_url
+                                    )
+                                except Exception as e:
+                                    logger.error(f"Auto-transcription failed for {ep_id}: {e}")
+                            return run
+
+                        background_tasks.add_task(create_transcription_task(episode_id, audio_url))
+                        logger.info(f"Queued transcription for episode {episode_id}")
 
             return {
                 "message": message,

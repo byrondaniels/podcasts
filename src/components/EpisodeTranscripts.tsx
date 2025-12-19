@@ -82,10 +82,10 @@ export const EpisodeTranscripts = () => {
     fetchEpisodes();
   }, [fetchEpisodes]);
 
-  // Auto-refresh when there are processing episodes
+  // Auto-refresh when there are processing or pending episodes
   useEffect(() => {
     const hasProcessingEpisodes = episodes.some(
-      (ep) => ep.transcript_status === 'processing'
+      (ep) => ep.transcript_status === 'processing' || ep.transcript_status === 'pending'
     );
 
     setAutoRefreshEnabled(hasProcessingEpisodes);
@@ -162,6 +162,37 @@ export const EpisodeTranscripts = () => {
       );
       setError(err instanceof Error ? err.message : 'Failed to trigger transcription');
           }
+  };
+
+  const handleRetryTranscription = async (episode: Episode) => {
+    try {
+      // Update episode status to pending optimistically
+      setEpisodes((prevEpisodes) =>
+        prevEpisodes.map((ep) =>
+          ep.episode_id === episode.episode_id
+            ? { ...ep, transcript_status: 'pending', error_message: undefined }
+            : ep
+        )
+      );
+
+      await episodeService.retryTranscription(episode.episode_id);
+
+      // Refresh episodes list to get updated status
+      setTimeout(() => {
+        fetchEpisodes();
+      }, 1000);
+    } catch (err) {
+      console.error('Failed to retry transcription:', err);
+      // Revert optimistic update on error
+      setEpisodes((prevEpisodes) =>
+        prevEpisodes.map((ep) =>
+          ep.episode_id === episode.episode_id
+            ? { ...ep, transcript_status: episode.transcript_status }
+            : ep
+        )
+      );
+      setError(err instanceof Error ? err.message : 'Failed to retry transcription');
+    }
   };
   const handlePollPodcast = async () => {
     if (podcastFilter === 'all') return;
@@ -348,7 +379,7 @@ export const EpisodeTranscripts = () => {
                           View
                         </Button>
                       )}
-                      {(episode.transcript_status === 'pending' || episode.transcript_status === 'failed') && (
+                      {episode.transcript_status === 'pending' && (
                         <Button
                           onClick={() => handleDownloadTranscript(episode)}
                           variant="secondary"
@@ -356,6 +387,16 @@ export const EpisodeTranscripts = () => {
                           className="download-transcript-button"
                         >
                           Download Transcript
+                        </Button>
+                      )}
+                      {episode.transcript_status === 'failed' && (
+                        <Button
+                          onClick={() => handleRetryTranscription(episode)}
+                          variant="secondary"
+                          leftIcon={<Icon name="refresh" size={20} />}
+                          className="retry-transcript-button"
+                        >
+                          Retry Transcription
                         </Button>
                       )}
                     </div>

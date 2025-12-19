@@ -109,6 +109,32 @@ class EpisodeService {
       throw new Error('An unexpected error occurred while triggering transcription');
     }
   }
+
+  /**
+   * Retry transcription for a failed episode
+   */
+  async retryTranscription(episodeId: string): Promise<void> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/transcription/retry/${episodeId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({
+          detail: 'Failed to retry transcription',
+        }));
+        throw new Error(errorData.detail || 'Failed to retry transcription');
+      }
+    } catch (error) {
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error('An unexpected error occurred while retrying transcription');
+    }
+  }
 }
 
 export const episodeService = new EpisodeService();
