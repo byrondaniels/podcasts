@@ -176,11 +176,55 @@ install: setup up ## Full installation - setup and start services
 	@echo ""
 	@echo "$(BLUE)Next steps:$(NC)"
 	@echo "  1. Edit .env and add your OPENAI_API_KEY (optional for dev)"
-	@echo "  2. Run './scripts/run-whisper-local.sh' to start local Whisper service"
-	@echo "  3. Run 'make init-db' to initialize the database"
+	@echo "  2. Run 'make init-db' to initialize the database"
+	@echo "  3. Run 'make dev' to start all services (includes Whisper)"
 	@echo "  4. Open http://localhost:3017 in your browser"
+	@echo ""
+	@echo "$(YELLOW)Note: 'make dev' automatically starts the local Whisper service$(NC)"
 
-dev: up logs ## Start services and follow logs
+start-whisper: ## Start local Whisper service in background
+	@echo "$(BLUE)Starting local Whisper service...$(NC)"
+	@if lsof -Pi :9000 -sTCP:LISTEN -t >/dev/null 2>&1 ; then \
+		echo "$(YELLOW)Whisper service already running on port 9000$(NC)"; \
+	else \
+		echo "$(GREEN)Starting Whisper service (medium.en model)...$(NC)"; \
+		nohup ./scripts/run-whisper-local.sh medium.en > /tmp/whisper-service.log 2>&1 & \
+		echo $$! > /tmp/whisper-service.pid; \
+		sleep 3; \
+		if curl -sf http://localhost:9000/ > /dev/null; then \
+			echo "$(GREEN)✓ Whisper service started successfully$(NC)"; \
+			echo "$(YELLOW)View logs: tail -f /tmp/whisper-service.log$(NC)"; \
+		else \
+			echo "$(RED)✗ Failed to start Whisper service$(NC)"; \
+			echo "$(YELLOW)Check logs: cat /tmp/whisper-service.log$(NC)"; \
+		fi \
+	fi
+
+stop-whisper: ## Stop local Whisper service
+	@echo "$(BLUE)Stopping local Whisper service...$(NC)"
+	@if [ -f /tmp/whisper-service.pid ]; then \
+		PID=$$(cat /tmp/whisper-service.pid); \
+		if ps -p $$PID > /dev/null 2>&1; then \
+			kill $$PID; \
+			rm /tmp/whisper-service.pid; \
+			echo "$(GREEN)✓ Whisper service stopped$(NC)"; \
+		else \
+			echo "$(YELLOW)Whisper service not running$(NC)"; \
+			rm /tmp/whisper-service.pid; \
+		fi \
+	else \
+		if lsof -Pi :9000 -sTCP:LISTEN -t >/dev/null 2>&1 ; then \
+			PID=$$(lsof -Pi :9000 -sTCP:LISTEN -t); \
+			kill $$PID; \
+			echo "$(GREEN)✓ Whisper service stopped$(NC)"; \
+		else \
+			echo "$(YELLOW)Whisper service not running$(NC)"; \
+		fi \
+	fi
+
+dev: start-whisper up logs ## Start Whisper and all services, then follow logs
+
+down-all: down stop-whisper ## Stop all services including Whisper
 
 backup-db: ## Backup MongoDB database
 	@echo "$(BLUE)Backing up MongoDB...$(NC)"

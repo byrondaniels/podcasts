@@ -39,7 +39,6 @@ A full-stack podcast management application that automatically transcribes podca
 ### Initial Setup
 ```bash
 make setup              # Copy .env.example to .env (OPENAI_API_KEY optional for dev)
-./scripts/run-whisper-local.sh  # Start local Whisper service (run in separate terminal)
 make up                 # Start all Docker services
 make init-db            # Initialize MongoDB schemas and indexes
 ```
@@ -48,18 +47,19 @@ make init-db            # Initialize MongoDB schemas and indexes
 
 ### Daily Development
 ```bash
-# Terminal 1: Start local Whisper service
-./scripts/run-whisper-local.sh medium.en  # Use medium.en for better quality
-
-# Terminal 2: Start Docker services
-make dev                # Start services and follow logs
+make dev                # Start Whisper + all Docker services, then follow logs
+# Whisper starts automatically in background with medium.en model
 
 # Other useful commands
+make start-whisper      # Manually start Whisper service in background
+make stop-whisper       # Stop Whisper service
+make down-all           # Stop all services including Whisper
 make logs               # View all service logs
 make logs-backend       # View backend logs only
 make logs-frontend      # View frontend logs only
 make ps                 # Show service status
 make health             # Check health of all services (including Whisper)
+tail -f /tmp/whisper-service.log  # View Whisper logs
 ```
 
 ### Database Operations
