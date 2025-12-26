@@ -138,15 +138,13 @@ services:
       - AWS_REGION=us-east-1
       - AWS_ENDPOINT_URL=http://minio:9002
       - S3_BUCKET=podcast-audio
-      - WHISPER_SERVICE_URL=http://whisper:9000
+      - WHISPER_SERVICE_URL=http://host.docker.internal:9000
       - PORT=8003
     depends_on:
       minio:
         condition: service_healthy
       minio-init:
         condition: service_completed_successfully
-      whisper:
-        condition: service_healthy
     networks:
       - podcast-network
     healthcheck:
@@ -208,7 +206,7 @@ services:
       - S3_BUCKET_NAME=${S3_BUCKET_NAME:-podcast-transcripts}
       - S3_AUDIO_BUCKET=podcast-audio
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - WHISPER_SERVICE_URL=http://whisper:9000
+      - WHISPER_SERVICE_URL=http://host.docker.internal:9000
       # Lambda service URLs for orchestration
       - POLL_LAMBDA_URL=http://poll-lambda:8001
       - CHUNKING_LAMBDA_URL=http://chunking-lambda:8002
@@ -228,8 +226,6 @@ services:
         condition: service_healthy
       minio-init:
         condition: service_completed_successfully
-      whisper:
-        condition: service_healthy
       poll-lambda:
         condition: service_healthy
       chunking-lambda:
@@ -246,27 +242,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 40s
-
-  # Whisper ASR Service (Dev-only local transcription)
-  whisper:
-    image: onerahmet/openai-whisper-asr-webservice:latest
-    container_name: podcast-whisper
-    restart: unless-stopped
-    ports:
-      - "9000:9000"
-    environment:
-      - ASR_MODEL=tiny
-      - ASR_ENGINE=openai_whisper
-    volumes:
-      - whisper-models:/root/.cache/whisper
-    networks:
-      - podcast-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
 
   # Frontend (React + Vite)
   frontend:
@@ -312,5 +287,3 @@ volumes:
     name: podcast-mongodb-data
   minio-data:
     name: podcast-minio-data
-  whisper-models:
-    name: podcast-whisper-models
